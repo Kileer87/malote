@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Entrar — Malote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-badge" src="/icons/icon-192.png" alt="Malote">
+      <div><div class="word">Malote</div><div class="sub">Entrar</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotVoltar('../index.html')">Voltar</button>
+      <a href="../index.html" style="font-size:12px;color:var(--ink-muted);text-decoration:none;border:1px solid var(--border);padding:7px 12px;border-radius:999px;">Leitor de Etiqueta</a>
+    </div>
+  </div>
+
+  <div class="shell narrow">
+    <div class="card">
+      <div id="passo-login">
+        <h2>Entrar</h2>
+
+        <div class="field"><label>E-mail</label><input type="email" id="f-email" placeholder="voce@email.com"></div>
+        <div class="field"><label>Senha</label><div class="campo-senha"><input type="password" id="f-senha" placeholder="Sua senha"><button type="button" class="btn-toggle-senha" data-toggle-senha="f-senha" tabindex="-1" aria-label="Mostrar senha"></button></div></div>
+        <p class="hint" style="margin-top:-8px;margin-bottom:0;text-align:right;"><a href="#" id="link-esqueci-senha">Esqueci minha senha</a></p>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-entrar" style="width:100%;">Entrar</button>
+        </div>
+        <p class="hint" style="margin-top:14px;margin-bottom:0;">
+          Não tem conta ainda? <a href="cadastro.html">Criar conta</a>
+        </p>
+        <p class="hint" style="margin-top:6px;margin-bottom:0;">
+          É morador e quer acompanhar sua encomenda? <a href="cadastro.html">Cadastre-se de graça</a>
+        </p>
+      </div>
+
+      <div id="passo-recuperar" style="display:none;">
+        <h2>Recuperar senha</h2>
+        <p class="hint" style="margin-top:0;">Digite o e-mail da sua conta — vamos mandar um link pra você criar uma senha nova.</p>
+        <div class="field"><label>E-mail</label><input type="email" id="f-email-recuperar" placeholder="voce@email.com"></div>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-enviar-recuperacao" style="width:100%;">Enviar link de recuperação</button>
+        </div>
+        <p class="hint" style="margin-top:10px;margin-bottom:0;"><a href="#" id="link-voltar-login">Voltar pro login</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="assets/supabase-client.js"></script>
+  <script>
+    async function decidirDestino(){
+      var admin = await malote.from('admins_plataforma').select('user_id').limit(1);
+      if (!admin.error && admin.data && admin.data.length){ location.replace('admin.html'); return; }
+
+      var pid = await malote.rpc('auth_partner_id');
+      if (!pid.error && pid.data){ location.replace('portal-parceiro.html'); return; }
+
+      // conta que se auto-cadastrou como parceiro e ainda está esperando
+      // confirmar o e-mail: manda pro portal do parceiro, que termina o
+      // cadastro sozinho usando o nome salvo localmente.
+      var nomeParceiroPendente = null;
+      try { nomeParceiroPendente = localStorage.getItem('malote_nome_parceiro_pendente'); } catch(e){}
+      if (nomeParceiroPendente){ location.replace('portal-parceiro.html'); return; }
+
+      // ainda não é admin nem parceiro reivindicado: tenta casar como
+      // parceiro pelo e-mail (silencioso — se não bater, segue como cliente)
+      var claim = await malote.rpc('reivindicar_parceiro');
+      if (!claim.error && claim.data){ location.replace('portal-parceiro.html'); return; }
+
+      // conta que se auto-cadastrou como empresa e ainda está esperando
+      // confirmar o e-mail: manda pro painel da empresa, que termina o
+      // cadastro sozinho usando os dados salvos localmente.
+      var empresaPendente = null;
+      try { empresaPendente = localStorage.getItem('malote_nome_empresa_pendente'); } catch(e){}
+      if (empresaPendente){ location.replace('/empresa/painel.html'); return; }
+
+      // dono de uma conta (condominial ou empresarial — mesma tabela
+      // condominios). Checado ANTES dos vínculos de morador/colaborador de
+      // propósito: quem é dono de uma conta é sempre mandado pro leitor de
+      // etiquetas primeiro (uso do dia a dia), mesmo que esse mesmo login
+      // também seja morador ou colaborador em algum outro condomínio/empresa.
+      // O leitor (index.html) já se adapta sozinho ao tipo_operacao (rótulos
+      // de bloco/apto vs unidade/setor); o painel de gestão (síndico ou
+      // empresa) continua acessível pelo botão "Voltar" lá dentro.
+      var userAtual = await malote.auth.getUser();
+      if (userAtual.data && userAtual.data.user){
+        var minhaConta = await malote.from('condominios').select('tipo_operacao').eq('user_id', userAtual.data.user.id).maybeSingle();
+        if (!minhaConta.error && minhaConta.data){
+          location.replace('/index.html');
+          return;
+        }
+      }
+
+      // porteiro/recepção (condomínio ou empresa) — login próprio, mas
+      // acesso restrito; vai direto pro leitor de etiqueta igual ao dono,
+      // que já reconhece essa conta sozinho e mostra só o que ela pode ver.
+      var pcid = await malote.rpc('auth_porteiro_condominio_id');
+      if (!pcid.error && pcid.data){ location.replace('/index.html'); return; }
+
+      // membro da equipe de uma empresa (gestor de unidade, responsável de
+      // setor ou operador) sem ser o dono da conta.
+      var membroEmpresa = await malote.rpc('minha_empresa_membership');
+      if (!membroEmpresa.error && membroEmpresa.data && membroEmpresa.data.length){ location.replace('/empresa/painel.html'); return; }
+
+      // conta que se auto-cadastrou como morador e ainda está esperando
+      // confirmar o e-mail: manda pro portal do morador, que termina o
+      // vínculo sozinho usando os dados salvos localmente.
+      var moradorPendente = null;
+      try { moradorPendente = localStorage.getItem('malote_morador_pendente_condominio'); } catch(e){}
+      if (moradorPendente){ location.replace('portal-morador.html'); return; }
+
+      var mid = await malote.rpc('auth_morador_id');
+      if (!mid.error && mid.data){ location.replace('portal-morador.html'); return; }
+
+      // conta que se auto-cadastrou como colaborador e ainda está esperando
+      // confirmar o e-mail.
+      var colaboradorPendente = null;
+      try { colaboradorPendente = localStorage.getItem('malote_colaborador_pendente_condominio'); } catch(e){}
+      if (colaboradorPendente){ location.replace('portal-colaborador.html'); return; }
+
+      var colid = await malote.rpc('auth_colaborador_id');
+      if (!colid.error && colid.data){ location.replace('portal-colaborador.html'); return; }
+
+      location.replace('/sindico/painel.html');
+    }
+
+    document.getElementById('link-esqueci-senha').addEventListener('click', function(e){
+      e.preventDefault();
+      document.getElementById('f-email-recuperar').value = document.getElementById('f-email').value.trim();
+      document.getElementById('passo-login').style.display = 'none';
+      document.getElementById('passo-recuperar').style.display = 'block';
+    });
+    document.getElementById('link-voltar-login').addEventListener('click', function(e){
+      e.preventDefault();
+      document.getElementById('passo-recuperar').style.display = 'none';
+      document.getElementById('passo-login').style.display = 'block';
+    });
+    document.getElementById('btn-enviar-recuperacao').addEventListener('click', async function(){
+      var email = document.getElementById('f-email-recuperar').value.trim();
+      if (!email){ malotToast('Digite seu e-mail.', 'erro'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Enviando...';
+      try {
+        // redirectTo usa o domínio de onde a página está sendo servida —
+        // funciona automaticamente em qualquer ambiente (produção, teste,
+        // etc.) sem precisar trocar um link fixo no código.
+        var { error } = await malote.auth.resetPasswordForEmail(email, {
+          redirectTo: location.origin + '/parceiros/redefinir-senha.html'
+        });
+        if (error) throw error;
+        malotToast('Se esse e-mail tiver uma conta, o link de recuperação já foi enviado.', 'ok');
+      } catch (err) {
+        // não revela se o e-mail existe ou não, por segurança — mensagem genérica
+        malotToast('Se esse e-mail tiver uma conta, o link de recuperação já foi enviado.', 'ok');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Enviar link de recuperação';
+      }
+    });
+
+    document.getElementById('btn-entrar').addEventListener('click', async function(){
+      var email = document.getElementById('f-email').value.trim();
+      var senha = document.getElementById('f-senha').value;
+      if (!email || !senha){ malotToast('Preencha e-mail e senha.', 'erro'); return; }
+
+      var btn = this; btn.disabled = true; btn.textContent = 'Entrando...';
+      try {
+        var { error } = await malote.auth.signInWithPassword({ email: email, password: senha });
+        if (error) throw error;
+        await decidirDestino();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+        btn.disabled = false; btn.textContent = 'Entrar';
+      }
+    });
+
+    (async function(){
+      var s = await malotSessao();
+      if (s) await decidirDestino();
+    })();
+  </script>
+  <div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="/parceiros/assets/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>

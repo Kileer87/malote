@@ -1,0 +1,40 @@
+MALOTE - LEITOR DE ETIQUETA
+Pacote pronto para hospedar no Netlify (gratis)
+
+O QUE TEM AQUI
+- index.html      -> o app (camera + leitura automatica da etiqueta + WhatsApp)
+- manifest.json    -> deixa o app instalavel (icone, tela cheia)
+- sw.js            -> permite abrir mais rapido depois da primeira vez
+- icons/           -> icones do app
+
+COMO PUBLICAR (o jeito mais simples, sem instalar nada)
+1. Extraia este zip em uma pasta no seu computador (mantenha os arquivos
+   e a pasta "icons" juntos, sem mudar os nomes).
+2. Abra https://app.netlify.com/drop no navegador.
+3. Se pedir, entre com sua conta Netlify (ou crie uma, e gratis).
+4. Arraste a PASTA extraida (nao o zip) para a area indicada na pagina.
+5. Em poucos segundos o Netlify te da um link, algo como:
+   https://nome-aleatorio-123.netlify.app
+6. Abra esse link no celular (Android ou iPhone).
+
+INSTALAR NO CELULAR DEPOIS DE PUBLICADO
+- iPhone: abra o link no Safari -> icone de compartilhar -> "Adicionar a
+  Tela de Inicio".
+- Android: abra o link no Chrome -> menu (tres pontinhos) -> "Adicionar a
+  tela inicial" (ou vai aparecer um aviso automatico de instalar).
+
+DEPOIS DE PUBLICADO, SE QUISER UM ENDERECO COM NOME MELHOR
+No painel do Netlify (app.netlify.com), abra o site publicado -> "Site
+configuration" -> "Change site name" -> escolha algo como
+"malote-leitor" (o link vira https://malote-leitor.netlify.app).
+
+OBSERVACOES
+- Na primeira vez que abrir, precisa de internet para baixar o leitor de
+  texto (OCR). Depois disso o app abre mais rapido.
+- Os moradores cadastrados aqui ficam so neste navegador/aparelho. Use a
+  aba "Historico / Backup" para gerar um backup em texto de vez em
+  quando, e cole a lista de moradores copiada do Malote principal la
+  tambem.
+- Se quiser que eu publique isso automaticamente pra voce (sem precisar
+  arrastar nada), e so conectar o Netlify comigo na conversa do Claude
+  que eu ja publico direto.

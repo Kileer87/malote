@@ -1,0 +1,1581 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Admin — Malote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-badge" src="/icons/icon-192.png" alt="Malote">
+      <div><div class="word">Malote</div><div class="sub">Admin · Parceiros</div></div>
+    </div>
+    <div class="nav">
+      <a href="#" class="active" data-aba="dashboard">Dashboard</a>
+      <a href="#" data-aba="financeiro">Financeiro</a>
+      <a href="#" data-aba="autorizacoes">Autorizações</a>
+      <a href="#" data-aba="parceiros">Parceiros</a>
+      <a href="#" data-aba="relatorios">Relatórios</a>
+      <a href="#" data-aba="associado">Associado</a>
+      <a href="#" data-aba="clientes">Clientes</a>
+      <a href="#" data-aba="comissoes">Comissões</a>
+      <a href="#" data-aba="config">Config</a>
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotVoltar('../index.html')">Voltar</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotSair()">Sair</button>
+    </div>
+  </div>
+
+  <div class="shell">
+    <div id="carregando" class="center-loading"><span class="spinner"></span> Carregando...</div>
+    <div id="sem-acesso" class="card" style="display:none;">
+      <h2>Sem acesso</h2>
+      <p class="hint">Esta conta não é administradora do Malote.</p>
+      <button type="button" class="btn btn-outline" onclick="malotSair()">Sair</button>
+    </div>
+
+    <div id="conteudo" style="display:none;">
+
+      <!-- DASHBOARD -->
+      <div id="aba-dashboard">
+        <div id="dash-alerta" class="card" style="display:none;background:var(--warn-bg);border-color:var(--warn);"></div>
+
+        <div class="stat-grid">
+          <div class="stat"><div class="num" id="dash-mrr">—</div><div class="lbl">MRR (receita recorrente)</div></div>
+          <div class="stat"><div class="num" id="dash-receita-mes">—</div><div class="lbl">Recebido no mês</div></div>
+          <div class="stat"><div class="num" id="dash-clientes-ativos">—</div><div class="lbl">Clientes ativos</div></div>
+          <div class="stat" data-ir-aba="autorizacoes" style="cursor:pointer;"><div class="num" id="dash-aguardando">—</div><div class="lbl">Aguardando liberação</div></div>
+          <div class="stat" data-ir-aba="comissoes" style="cursor:pointer;"><div class="num" id="dash-comissoes-pendentes">—</div><div class="lbl">Comissões a pagar</div></div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Receita mensal</h2>
+          <p class="hint">Pagamentos confirmados como "pago", por competência (últimos 12 meses).</p>
+          <div id="dash-grafico-receita"></div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Novos clientes por mês</h2>
+          <p class="hint">Cadastros novos, por data de criação da conta (últimos 12 meses).</p>
+          <div id="dash-grafico-clientes"></div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Carteira de clientes</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Modalidade</th><th>Situação</th></tr></thead>
+              <tbody id="dash-tbl-carteira"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Top parceiros do mês</h2>
+          <p class="hint">Por valor de comissão gerado neste mês. <a href="#" data-ir-aba="parceiros">Ver todos os parceiros</a>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Parceiro</th><th>Clientes novos no mês</th><th>Valor gerado no mês</th></tr></thead>
+              <tbody id="dash-tbl-top-parceiros"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="dash-top-parceiros-vazio" style="display:none;">Nenhum parceiro com comissão gerada este mês.</div>
+        </div>
+      </div>
+
+      <!-- FINANCEIRO -->
+      <div id="aba-financeiro" style="display:none;">
+        <div class="stat-grid">
+          <div class="stat"><div class="num" id="fin-receita-mes">—</div><div class="lbl">Receita do mês</div></div>
+          <div class="stat"><div class="num" id="fin-comissoes-pendentes">—</div><div class="lbl">Comissões a pagar</div></div>
+          <div class="stat"><div class="num" id="fin-liquido-mes">—</div><div class="lbl">Líquido do mês</div></div>
+          <div class="stat"><div class="num" id="fin-clientes-ativos">—</div><div class="lbl">Clientes com acesso ativo</div></div>
+          <div class="stat"><div class="num" id="fin-pagamentos-pendentes">—</div><div class="lbl">Pagamentos pendentes</div></div>
+        </div>
+
+        <div class="card">
+          <h2>Vendas por mês</h2>
+          <p class="hint">Soma dos pagamentos confirmados como "pago", por competência (últimos 12 meses).</p>
+          <div id="fin-grafico"></div>
+        </div>
+
+        <div class="card">
+          <h2>Registrar pagamento</h2>
+          <p class="hint">Ao marcar como "Pago", o acesso do cliente é liberado automaticamente e — se ele veio de indicação de um associado — a comissão dele já é calculada e gerada sozinha.</p>
+          <div class="form-grid">
+            <div class="field"><label>Cliente</label><select id="pg-condominio"></select></div>
+            <div class="field"><label>Valor (R$)</label><input type="text" id="pg-valor" placeholder="Ex: 99,90"></div>
+            <div class="field"><label>Competência (mês)</label><input type="month" id="pg-competencia"></div>
+            <div class="field"><label>Status</label>
+              <select id="pg-status">
+                <option value="pago">Pago</option>
+                <option value="pendente">Pendente</option>
+              </select>
+            </div>
+          </div>
+          <div id="pg-comissao-preview" class="ref-box" style="display:none;margin-bottom:14px;"></div>
+          <div class="actions" style="margin-top:0;"><button type="button" class="btn btn-primary" id="btn-registrar-pagamento">Registrar</button></div>
+        </div>
+
+        <div class="card">
+          <h2>Pagamentos</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cliente</th><th>Competência</th><th>Valor</th><th>Origem</th><th>Registrado por</th><th>Status</th><th>Alterar</th></tr></thead>
+              <tbody id="tbl-pagamentos"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="pagamentos-vazio" style="display:none;">Nenhum pagamento registrado ainda.</div>
+        </div>
+
+        <div class="card">
+          <h2>Cortesias concedidas</h2>
+          <p class="hint">Meses grátis dados manualmente (ex: bônus pelo primeiro pagamento). Pra conceder, use o botão "Cortesia" na aba Clientes.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cliente</th><th>Meses</th><th>Motivo</th><th>Concedido por</th><th>Quando</th></tr></thead>
+              <tbody id="tbl-cortesias"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="cortesias-vazio" style="display:none;">Nenhuma cortesia concedida ainda.</div>
+        </div>
+
+        <div class="card">
+          <h2>Vendas por parceiro — mês atual</h2>
+          <p class="hint">Pra saber quanto pagar de comissão pra cada um. "Clientes novos" conta quem foi indicado neste mês (mesmo que ainda não tenha pago); as comissões só existem depois que o pagamento é confirmado.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Parceiro</th><th>Clientes novos no mês</th><th>Comissões geradas no mês</th><th>Valor gerado no mês</th><th>Pendente (total)</th><th>Já pago (total)</th></tr></thead>
+              <tbody id="tbl-financeiro-parceiros"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="financeiro-parceiros-vazio" style="display:none;">Nenhum parceiro cadastrado ainda.</div>
+        </div>
+      </div>
+
+      <!-- AUTORIZAÇÕES -->
+      <div id="aba-autorizacoes" style="display:none;">
+        <div class="card">
+          <h2>Contas aguardando liberação</h2>
+          <p class="hint">Toda conta nova (condomínio, empresa, parceiro, morador ou colaborador) precisa confirmar o e-mail antes de conseguir entrar. Enquanto o e-mail não chega (ou não é confirmado), ela fica aqui — clique em "Liberar acesso" pra confirmar na hora.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>E-mail</th><th>Tipo</th><th>Nome</th><th>Cadastrado em</th><th></th></tr></thead>
+              <tbody id="tbl-autorizacoes"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="autorizacoes-vazio" style="display:none;">Nenhuma conta aguardando liberação.</div>
+        </div>
+      </div>
+
+      <!-- PARCEIROS -->
+      <div id="aba-parceiros" style="display:none;">
+        <div class="card">
+          <h2 id="form-parceiro-titulo">Novo parceiro</h2>
+          <div class="form-grid">
+            <div class="field"><label>Nome</label><input type="text" id="p-nome"></div>
+            <div class="field"><label>E-mail</label><input type="email" id="p-email"></div>
+            <div class="field"><label>Código (curto, único)</label><input type="text" id="p-codigo" placeholder="Ex: ANA2024" class="mono"></div>
+            <div class="field"><label>Status</label>
+              <select id="p-status"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select>
+            </div>
+            <div class="field"><label>% de comissão (opcional)</label><input type="text" id="p-percentual" placeholder="Deixe vazio pra usar o padrão"></div>
+          </div>
+          <p class="hint" id="p-percentual-hint" style="margin-top:-6px;margin-bottom:0;">Deixe em branco pra esse parceiro usar o percentual padrão (aba "Config"). Preencha só se combinou um percentual diferente com ele.</p>
+          <div class="actions">
+            <button type="button" class="btn btn-primary" id="btn-salvar-parceiro">Salvar parceiro</button>
+            <button type="button" class="btn btn-outline" id="btn-cancelar-edicao" style="display:none;">Cancelar edição</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Meus parceiros</h2>
+          <p class="hint" id="parceiros-pct-hint" style="margin-top:0;">Cada parceiro recebe <strong>—</strong> do valor de cada pagamento dos clientes que ele trouxe. Pra mudar esse percentual, use a aba "Config".</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Código</th><th>Status</th><th>Clientes</th><th>%</th><th>Pendente</th><th>Pago</th><th>Link</th><th></th></tr></thead>
+              <tbody id="tbl-parceiros"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="parceiros-vazio" style="display:none;">Nenhum parceiro cadastrado ainda.</div>
+        </div>
+      </div>
+
+      <!-- RELATÓRIOS -->
+      <div id="aba-relatorios" style="display:none;">
+        <div class="card">
+          <h2>Relatórios enviados pelos parceiros</h2>
+          <p class="hint">Resumo calculado automaticamente no momento do envio + mensagem opcional do parceiro.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Parceiro</th><th>Enviado em</th><th>Clientes</th><th>Pendente</th><th>Paga</th><th>Mensagem</th><th>Status</th><th></th></tr></thead>
+              <tbody id="tbl-relatorios"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="relatorios-vazio" style="display:none;">Nenhum relatório enviado ainda.</div>
+        </div>
+      </div>
+
+      <!-- ASSOCIADO -->
+      <div id="aba-associado" style="display:none;">
+        <div class="card">
+          <h2>Escolha o associado</h2>
+          <div class="field" style="margin-bottom:0;"><label>Parceiro</label><select id="assoc-select"><option value="">Selecione...</option></select></div>
+        </div>
+
+        <div id="assoc-detalhe" style="display:none;">
+          <div class="card">
+            <h2 id="assoc-nome">—</h2>
+            <p class="hint" id="assoc-info" style="margin-bottom:8px;">—</p>
+            <p class="hint" id="assoc-motivo" style="display:none;margin-bottom:8px;"></p>
+            <div class="actions" style="margin-top:0;">
+              <button type="button" class="btn btn-danger btn-sm" id="btn-assoc-bloquear">Bloquear acesso</button>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-assoc-liberar" style="display:none;">Liberar acesso</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Clientes indicados por ele</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Condomínio</th><th>Indicado em</th><th>Acesso do cliente</th></tr></thead>
+                <tbody id="tbl-assoc-clientes"></tbody>
+              </table>
+            </div>
+            <div class="empty" id="assoc-clientes-vazio" style="display:none;">Nenhum cliente indicado ainda.</div>
+          </div>
+
+          <div class="card">
+            <h2>Comissões dele</h2>
+            <div class="actions" style="margin-top:0;margin-bottom:14px;">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-assoc-liberar-pagamento">Liberar pagamento das selecionadas</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th></th><th>Cliente</th><th>Competência</th><th>Valor</th><th>Status</th><th>Pago em</th></tr></thead>
+                <tbody id="tbl-assoc-comissoes"></tbody>
+              </table>
+            </div>
+            <div class="empty" id="assoc-comissoes-vazio" style="display:none;">Nenhuma comissão ainda.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CLIENTES -->
+      <div id="aba-clientes" style="display:none;">
+        <div class="card">
+          <h2>Cadastrar cliente</h2>
+          <div class="field">
+            <label>Tipo de conta</label>
+            <div class="actions" style="margin-top:0;">
+              <button type="button" class="btn btn-primary" id="cli-tipo-condominial" style="flex:1;">Condomínio</button>
+              <button type="button" class="btn btn-outline" id="cli-tipo-empresarial" style="flex:1;">Empresa</button>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="field full"><label id="cli-nome-label">Nome do condomínio</label><input type="text" id="cli-nome" placeholder="Ex: Residencial Jardim das Flores"></div>
+            <div class="field full" id="cli-empresa-extra" style="display:none;">
+              <div class="form-grid">
+                <div class="field"><label>Razão social (opcional)</label><input type="text" id="cli-razao-social" placeholder="Ex: Supera Serviços LTDA"></div>
+                <div class="field"><label>CNPJ (opcional)</label><input type="text" id="cli-cnpj" placeholder="00.000.000/0000-00"></div>
+                <div class="field"><label>Quantidade de colaboradores (opcional)</label><input type="number" id="cli-qtd-colaboradores" min="1" step="1" placeholder="Ex: 650"></div>
+              </div>
+            </div>
+            <div class="field"><label>E-mail<span id="cli-email-obrig" style="display:none;"> (obrigatório pra já criar o login)</span><span id="cli-email-opc"> (opcional)</span></label><input type="email" id="cli-email" placeholder="para casar com o login dele depois"></div>
+            <div class="field"><label>Quem fez a venda</label><select id="cli-parceiro"><option value="">Venda direta (sem parceiro)</option></select></div>
+            <div class="field">
+              <label>Teste grátis já na largada — dias (opcional)</label>
+              <input type="number" id="cli-teste-dias" min="1" max="60" placeholder="Ex: 10 (deixe em branco pra não dar teste)">
+              <div class="help">De 1 a 60 dias. Libera o acesso na hora e bloqueia sozinho quando o prazo acabar, se ele não virar cliente pago antes.</div>
+            </div>
+            <div class="field full">
+              <label>Já criar uma senha de acesso? (opcional)</label>
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="cli-senha" placeholder="Deixe em branco pra ele se cadastrar sozinho depois" style="flex:1;">
+                <button type="button" class="btn btn-outline btn-sm" id="btn-gerar-senha">Gerar senha</button>
+              </div>
+              <div class="help">Se você preencher isso, a conta já nasce pronta pra usar — com login e senha prontos, e-mail já confirmado — pra você repassar direto pro síndico (por WhatsApp, por exemplo) fazer o teste grátis sem precisar se cadastrar sozinho. Sem isso, é só um cadastro esperando ele criar a própria conta.</div>
+            </div>
+          </div>
+          <div class="actions"><button type="button" class="btn btn-primary" id="btn-cadastrar-cliente">Cadastrar cliente</button></div>
+          <div id="cli-credenciais-box" class="ref-box" style="display:none;margin-top:12px;">
+            <span class="link mono" id="cli-credenciais-texto"></span>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-copiar-credenciais">Copiar</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Convidar cliente já atribuindo a um parceiro</h2>
+          <div class="field"><label>Parceiro</label><select id="convite-parceiro"></select></div>
+          <div class="ref-box">
+            <span class="link mono" id="convite-link">Escolha um parceiro acima</span>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-copiar-convite">Copiar</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Trocar o parceiro de um cliente</h2>
+          <p class="hint">Só vale pra comissões futuras — as já geradas não mudam.</p>
+          <div class="form-grid">
+            <div class="field"><label>Cliente</label><select id="troca-condominio"></select></div>
+            <div class="field"><label>Novo parceiro</label><select id="troca-parceiro"></select></div>
+            <div class="field full"><label>Motivo</label><input type="text" id="troca-motivo" placeholder="Ex: pedido do cliente"></div>
+          </div>
+          <div class="actions"><button type="button" class="btn btn-primary" id="btn-trocar-parceiro">Trocar parceiro</button></div>
+        </div>
+
+        <h2 style="margin:28px 0 4px;">Condomínios (Malote Condominial)</h2>
+        <div class="stat-grid">
+          <div class="stat"><div class="num" id="stat-total-condominios">—</div><div class="lbl">Condomínios</div></div>
+          <div class="stat"><div class="num" id="stat-total-blocos">—</div><div class="lbl">Blocos (total)</div></div>
+          <div class="stat"><div class="num" id="stat-total-apartamentos">—</div><div class="lbl">Apartamentos (total)</div></div>
+        </div>
+        <div class="card">
+          <h2>Clientes (condomínios)</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Condomínio</th><th>Cidade/UF</th><th>Plano</th><th>Vendido por</th><th>Apartamentos</th><th>Vencimento</th><th>Login</th><th>Acesso</th><th>Criado em</th><th></th></tr></thead>
+              <tbody id="tbl-clientes-condominios"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="clientes-condominios-vazio" style="display:none;">Nenhum condomínio cadastrado ainda.</div>
+        </div>
+
+        <h2 style="margin:28px 0 4px;">Empresas (Malote Empresarial)</h2>
+        <div class="stat-grid">
+          <div class="stat"><div class="num" id="stat-total-empresas">—</div><div class="lbl">Empresas</div></div>
+          <div class="stat"><div class="num" id="stat-total-unidades">—</div><div class="lbl">Unidades (total)</div></div>
+          <div class="stat"><div class="num" id="stat-total-setores">—</div><div class="lbl">Setores (total)</div></div>
+          <div class="stat"><div class="num" id="stat-total-colaboradores">—</div><div class="lbl">Colaboradores (total)</div></div>
+        </div>
+        <div class="card">
+          <h2>Clientes (empresas)</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Empresa</th><th>Cidade/UF</th><th>Plano</th><th>Vendido por</th><th>Estrutura</th><th>Vencimento</th><th>Login</th><th>Acesso</th><th>Criado em</th><th></th></tr></thead>
+              <tbody id="tbl-clientes-empresas"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="clientes-empresas-vazio" style="display:none;">Nenhuma empresa cadastrada ainda.</div>
+        </div>
+      </div>
+
+      <!-- COMISSÕES -->
+      <div id="aba-comissoes" style="display:none;">
+        <div class="card">
+          <h2>Comissões</h2>
+          <div class="actions" style="margin-top:0;margin-bottom:14px;">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-pagar-selecionadas">Pagar selecionadas</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th></th><th>Parceiro</th><th>Cliente</th><th>Competência</th><th>Valor</th><th>Status</th><th>Pago em</th></tr></thead>
+              <tbody id="tbl-comissoes"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="comissoes-vazio" style="display:none;">Nenhuma comissão ainda.</div>
+        </div>
+      </div>
+
+      <!-- CONFIG -->
+      <div id="aba-config" style="display:none;">
+        <div class="card">
+          <h2>Configuração de comissão</h2>
+          <div class="form-grid">
+            <div class="field"><label>Percentual (%)</label><input type="text" id="cfg-percentual" placeholder="Ex: 50"></div>
+            <div class="field"><label>Teto por comissão (R$, opcional)</label><input type="text" id="cfg-teto" placeholder="Ex: 200,00 (deixe vazio pra sem teto)"></div>
+          </div>
+          <div class="actions"><button type="button" class="btn btn-primary" id="btn-salvar-config">Salvar</button></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="assets/supabase-client.js"></script>
+  <script>
+    var estado = { parceiros: [], condominios: [], links: [], pagamentos: [], comissoes: [], pendentes: [], admins: [], relatorios: [], cortesias: [], unidades: [], setores: [], colaboradores: [], config: { percentual: 0.5, teto_centavos: null }, editandoParceiroId: null };
+
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+    // Rastreabilidade: nome de exibição de um admin a partir do user_id
+    // gravado em campos como ultima_acao_acesso_por, registrado_por, pago_por.
+    function nomeAdmin(userId){
+      if (!userId) return null;
+      var a = estado.admins.filter(function(x){ return x.user_id === userId; })[0];
+      return a ? a.nome : 'admin';
+    }
+    function centavosParaReal(c){ return ((c||0)/100).toFixed(2).replace('.', ','); }
+    function realParaCentavos(txt){
+      var n = parseFloat(String(txt).replace(/\./g,'').replace(',', '.'));
+      return isNaN(n) ? null : Math.round(n * 100);
+    }
+
+    var ABAS_ADMIN = ['dashboard','financeiro','autorizacoes','parceiros','relatorios','associado','clientes','comissoes','config'];
+
+    function ativarAba(id){
+      document.querySelectorAll('.nav a[data-aba]').forEach(function(x){ x.classList.toggle('active', x.getAttribute('data-aba') === id); });
+      ABAS_ADMIN.forEach(function(abaId){
+        document.getElementById('aba-'+abaId).style.display = (abaId === id) ? 'block' : 'none';
+      });
+    }
+
+    document.querySelectorAll('.nav a[data-aba]').forEach(function(a){
+      a.addEventListener('click', function(e){
+        e.preventDefault();
+        ativarAba(a.getAttribute('data-aba'));
+      });
+    });
+
+    // links tipo "Ver todos os parceiros" dentro do dashboard, que pulam
+    // pra outra aba sem precisar duplicar o conteúdo.
+    document.addEventListener('click', function(e){
+      var el = e.target.closest('[data-ir-aba]');
+      if (!el) return;
+      e.preventDefault();
+      ativarAba(el.getAttribute('data-ir-aba'));
+    });
+
+    async function carregarTudo(){
+      var [rp, rc, rl, rpg, rcm, rpd, rcfg, rad, rrel, rcor, ru, rs, rcl] = await Promise.all([
+        malote.from('parceiros').select('*').order('criado_em', { ascending: false }),
+        malote.from('condominios').select('*').order('criado_em', { ascending: false }),
+        malote.from('condominio_parceiro').select('condominio_id, parceiro_id, criado_em').eq('vigente', true),
+        malote.from('pagamentos_assinatura').select('*').order('competencia', { ascending: false }),
+        malote.from('comissoes_parceiro').select('*, parceiros(nome)').order('criado_em', { ascending: false }),
+        malote.rpc('admin_listar_pendentes'),
+        malote.from('config_comissao').select('*').limit(1).single(),
+        malote.from('admins_plataforma').select('*'),
+        malote.from('relatorios_parceiro').select('*, parceiros(nome)').order('criado_em', { ascending: false }),
+        malote.rpc('admin_listar_cortesias'),
+        // estrutura das empresas (Malote Empresarial) — só pra mostrar as
+        // quantidades no painel; RLS libera leitura pro admin da plataforma.
+        malote.from('unidades').select('id, condominio_id'),
+        malote.from('setores').select('id, condominio_id'),
+        malote.from('colaboradores').select('id, condominio_id')
+      ]);
+      estado.parceiros = rp.data || [];
+      estado.condominios = rc.data || [];
+      estado.links = rl.data || [];
+      estado.pagamentos = rpg.data || [];
+      estado.comissoes = rcm.data || [];
+      estado.pendentes = rpd.data || [];
+      estado.admins = rad.data || [];
+      estado.relatorios = rrel.data || [];
+      estado.cortesias = rcor.data || [];
+      estado.unidades = ru.data || [];
+      estado.setores = rs.data || [];
+      estado.colaboradores = rcl.data || [];
+      if (!rcfg.error && rcfg.data) estado.config = rcfg.data;
+
+      renderAutorizacoes();
+      renderParceiros();
+      renderSelects();
+      renderClientes();
+      renderPagamentos();
+      renderComissoes();
+      renderFinanceiro();
+      renderRelatorios();
+      renderCortesias();
+      renderDashboard();
+    }
+
+    function mesAtualISO(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-01'; }
+
+    function renderFinanceiro(){
+      var competenciaAtual = mesAtualISO();
+
+      var receitaMes = estado.pagamentos
+        .filter(function(p){ return p.status === 'pago' && p.competencia === competenciaAtual; })
+        .reduce(function(s,p){ return s + p.valor_centavos; }, 0);
+
+      var comissoesPendentes = estado.comissoes
+        .filter(function(c){ return c.status === 'pendente'; })
+        .reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+
+      var comissoesMes = estado.comissoes
+        .filter(function(c){ return c.competencia === competenciaAtual && c.status !== 'cancelada'; })
+        .reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+
+      var clientesAtivos = estado.condominios.filter(function(c){ return !c.bloqueado; }).length;
+      var pagamentosPendentes = estado.pagamentos.filter(function(p){ return p.status === 'pendente'; }).length;
+
+      document.getElementById('fin-receita-mes').textContent = malotFormatarCentavos(receitaMes);
+      document.getElementById('fin-comissoes-pendentes').textContent = malotFormatarCentavos(comissoesPendentes);
+      document.getElementById('fin-liquido-mes').textContent = malotFormatarCentavos(receitaMes - comissoesMes);
+      document.getElementById('fin-clientes-ativos').textContent = String(clientesAtivos);
+      document.getElementById('fin-pagamentos-pendentes').textContent = String(pagamentosPendentes);
+
+      document.getElementById('fin-grafico').innerHTML = graficoVendasMensais();
+
+      renderFinanceiroParceiros();
+      atualizarPreviewComissao();
+    }
+
+    // Calcula, com a mesma fórmula do gatilho gerar_comissao_pagamento() no
+    // banco, quanto de comissão o associado vai receber se esse pagamento for
+    // marcado como "Pago" — pra mostrar isso pro admin ANTES de registrar,
+    // já com o percentual próprio do parceiro (se houver) e o teto aplicados.
+    function calcularComissaoEstimativa(condominioId, valorCentavos){
+      var parceiro = parceiroDoCondominio(condominioId);
+      if (!parceiro) return { parceiro: null };
+      var percentual = parceiro.percentual_customizado != null ? parceiro.percentual_customizado : (estado.config.percentual || 0);
+      var comissao = Math.floor(valorCentavos * percentual);
+      var teto = estado.config.teto_centavos;
+      if (teto != null && comissao > teto) comissao = teto;
+      return { parceiro: parceiro, percentual: percentual, comissaoCentavos: comissao };
+    }
+
+    function atualizarPreviewComissao(){
+      var box = document.getElementById('pg-comissao-preview');
+      if (!box) return;
+      var condominioId = document.getElementById('pg-condominio').value;
+      var valorCentavos = realParaCentavos(document.getElementById('pg-valor').value);
+      var status = document.getElementById('pg-status').value;
+
+      if (!condominioId){ box.style.display = 'none'; return; }
+
+      var parceiro = parceiroDoCondominio(condominioId);
+      if (!parceiro){
+        box.style.display = 'flex';
+        box.innerHTML = '<span class="hint" style="margin:0;">Venda direta — sem associado vinculado, nenhuma comissão é gerada.</span>';
+        return;
+      }
+
+      if (status !== 'pago' || valorCentavos == null){
+        box.style.display = 'flex';
+        box.innerHTML = '<span class="hint" style="margin:0;">Indicado por <strong>' + esc(parceiro.nome) + '</strong>. Preencha o valor e marque como "Pago" pra ver a comissão calculada.</span>';
+        return;
+      }
+
+      var est = calcularComissaoEstimativa(condominioId, valorCentavos);
+      var pctTexto = Math.round((est.percentual || 0) * 10000) / 100 + '%';
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<span class="hint" style="margin:0;">Indicado por <strong>' + esc(parceiro.nome) + '</strong> — comissão estimada: ' +
+        '<strong style="color:var(--ink);">' + malotFormatarCentavos(est.comissaoCentavos) + '</strong> (' + pctTexto + ')' +
+        (parceiro.percentual_customizado != null ? ' <span class="hint" style="margin:0;">— percentual próprio dele</span>' : '') +
+        '. Gerada automaticamente assim que você registrar.</span>';
+    }
+
+    ['pg-condominio','pg-status'].forEach(function(id){
+      document.getElementById(id).addEventListener('change', atualizarPreviewComissao);
+    });
+    document.getElementById('pg-valor').addEventListener('input', atualizarPreviewComissao);
+
+    function mesmoMes(dataISO, ano, mes){
+      if (!dataISO) return false;
+      var d = new Date(dataISO);
+      return d.getFullYear() === ano && d.getMonth() === mes;
+    }
+
+    // Visão executiva: junta números que já existem espalhados pelas outras
+    // abas (financeiro, autorizações, clientes, parceiros) num resumo só,
+    // pra abrir o admin e já enxergar a saúde do negócio sem precisar
+    // navegar. Não faz nenhuma busca nova — usa só o que carregarTudo() já
+    // trouxe.
+    function renderDashboard(){
+      var hoje = new Date();
+      var competenciaAtual = mesAtualISO();
+
+      // MRR: mensalidade "cheia" de quem está ativo e já não está em teste
+      // grátis — diferente de "recebido no mês", que é dinheiro que já caiu.
+      var mrrCentavos = 0;
+      estado.condominios.forEach(function(c){
+        if (c.bloqueado || c.em_teste) return;
+        if (c.tipo_operacao === 'empresarial'){
+          if (c.qtd_colaboradores_contratados) mrrCentavos += Math.round(malotCalcularMensalidadeEmpresarial(c.qtd_colaboradores_contratados) * 100);
+        } else {
+          mrrCentavos += Math.round(malotCalcularMensalidade(c.qtd_apartamentos) * 100);
+        }
+      });
+
+      var receitaMes = estado.pagamentos
+        .filter(function(p){ return p.status === 'pago' && p.competencia === competenciaAtual; })
+        .reduce(function(s,p){ return s + p.valor_centavos; }, 0);
+      var clientesAtivos = estado.condominios.filter(function(c){ return !c.bloqueado; }).length;
+      var comissoesPendentes = estado.comissoes.filter(function(c){ return c.status === 'pendente'; }).reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+
+      document.getElementById('dash-mrr').textContent = malotFormatarCentavos(mrrCentavos);
+      document.getElementById('dash-receita-mes').textContent = malotFormatarCentavos(receitaMes);
+      document.getElementById('dash-clientes-ativos').textContent = String(clientesAtivos);
+      document.getElementById('dash-aguardando').textContent = String(estado.pendentes.length);
+      document.getElementById('dash-comissoes-pendentes').textContent = malotFormatarCentavos(comissoesPendentes);
+
+      // faixa de aviso no topo — só some se não tiver nada pedindo atenção
+      var avisos = [];
+      if (estado.pendentes.length) avisos.push(estado.pendentes.length + ' conta(s) aguardando liberação');
+      var pagamentosPendentesQtd = estado.pagamentos.filter(function(p){ return p.status === 'pendente'; }).length;
+      if (pagamentosPendentesQtd) avisos.push(pagamentosPendentesQtd + ' pagamento(s) pendente(s)');
+      var bloqueadosQtd = estado.condominios.filter(function(c){ return c.bloqueado; }).length;
+      if (bloqueadosQtd) avisos.push(bloqueadosQtd + ' cliente(s) com acesso bloqueado');
+      var elAlerta = document.getElementById('dash-alerta');
+      if (avisos.length){
+        elAlerta.style.display = 'block';
+        elAlerta.innerHTML = '<strong>Precisa de atenção:</strong> ' + avisos.join(' · ') + '.';
+      } else {
+        elAlerta.style.display = 'none';
+      }
+
+      document.getElementById('dash-grafico-receita').innerHTML = graficoVendasMensais();
+
+      // novos clientes por mês (condominial x empresarial), últimos 12 meses
+      var nomesMes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+      var meses = [];
+      for (var i = 11; i >= 0; i--){
+        var d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+        meses.push({ ano: d.getFullYear(), mes: d.getMonth(), label: nomesMes[d.getMonth()] + '/' + String(d.getFullYear()).slice(2), v1: 0, v2: 0 });
+      }
+      estado.condominios.forEach(function(c){
+        if (!c.criado_em) return;
+        var dc = new Date(c.criado_em);
+        var ponto = meses.filter(function(m){ return m.ano === dc.getFullYear() && m.mes === dc.getMonth(); })[0];
+        if (!ponto) return;
+        if (c.tipo_operacao === 'empresarial') ponto.v2++; else ponto.v1++;
+      });
+      document.getElementById('dash-grafico-clientes').innerHTML = malotGraficoDuasSeries(meses, {
+        nome1: 'Condomínios novos',
+        nome2: 'Empresas novas',
+        ariaLabel: 'Novos clientes por mês, últimos 12 meses',
+        formatarValor: function(v){ return v + (v === 1 ? ' cliente' : ' clientes'); }
+      });
+
+      // carteira: ativos / em teste / bloqueados, por modalidade — em badges
+      // (em vez de mais colunas numa tabela) pra caber numa tela de celular
+      // sem precisar rolar pros lados.
+      function linhaCarteira(nome, lista){
+        var ativos = lista.filter(function(c){ return !c.bloqueado && !c.em_teste; }).length;
+        var teste = lista.filter(function(c){ return !c.bloqueado && c.em_teste; }).length;
+        var bloqueados = lista.filter(function(c){ return c.bloqueado; }).length;
+        return '<tr><td>' + nome + ' <span class="hint" style="margin:0;">(' + lista.length + ')</span></td><td>' +
+          '<span class="badge badge-ok">' + ativos + ' ativo(s)</span> ' +
+          '<span class="badge badge-warn">' + teste + ' em teste</span> ' +
+          '<span class="badge badge-danger">' + bloqueados + ' bloqueado(s)</span>' +
+          '</td></tr>';
+      }
+      var condominiosLista = estado.condominios.filter(function(c){ return c.tipo_operacao !== 'empresarial'; });
+      var empresasLista = estado.condominios.filter(function(c){ return c.tipo_operacao === 'empresarial'; });
+      document.getElementById('dash-tbl-carteira').innerHTML =
+        linhaCarteira('Condomínios', condominiosLista) + linhaCarteira('Empresas', empresasLista);
+
+      // top 5 parceiros do mês, por valor de comissão gerado
+      var anoAtual = hoje.getFullYear(), mesAtualIdx = hoje.getMonth();
+      var rankingParceiros = estado.parceiros.map(function(p){
+        var clientesNovos = estado.links.filter(function(l){ return l.parceiro_id === p.id && mesmoMes(l.criado_em, anoAtual, mesAtualIdx); }).length;
+        var comissoesMes = estado.comissoes.filter(function(c){ return c.parceiro_id === p.id && c.competencia === competenciaAtual && c.status !== 'cancelada'; });
+        var valorMes = comissoesMes.reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+        return { nome: p.nome, clientesNovos: clientesNovos, valorMes: valorMes };
+      }).filter(function(r){ return r.valorMes > 0 || r.clientesNovos > 0; })
+        .sort(function(a,b){ return b.valorMes - a.valorMes; })
+        .slice(0, 5);
+
+      var tblTop = document.getElementById('dash-tbl-top-parceiros');
+      tblTop.innerHTML = rankingParceiros.map(function(r){
+        return '<tr><td>' + esc(r.nome) + '</td><td>' + r.clientesNovos + '</td><td>' + malotFormatarCentavos(r.valorMes) + '</td></tr>';
+      }).join('');
+      document.getElementById('dash-top-parceiros-vazio').style.display = rankingParceiros.length ? 'none' : 'block';
+    }
+
+    function renderFinanceiroParceiros(){
+      var hoje = new Date();
+      var ano = hoje.getFullYear(), mes = hoje.getMonth();
+      var competenciaAtual = mesAtualISO();
+
+      var tbl = document.getElementById('tbl-financeiro-parceiros');
+      tbl.innerHTML = '';
+      estado.parceiros.forEach(function(p){
+        var clientesNovos = estado.links.filter(function(l){
+          return l.parceiro_id === p.id && mesmoMes(l.criado_em, ano, mes);
+        }).length;
+
+        var comissoesMes = estado.comissoes.filter(function(c){
+          return c.parceiro_id === p.id && c.competencia === competenciaAtual && c.status !== 'cancelada';
+        });
+        var valorMes = comissoesMes.reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+
+        var pendenteTotal = estado.comissoes.filter(function(c){ return c.parceiro_id === p.id && c.status === 'pendente'; }).reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+        var pagoTotal = estado.comissoes.filter(function(c){ return c.parceiro_id === p.id && c.status === 'paga'; }).reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+
+        tbl.innerHTML += '<tr>' +
+          '<td>' + esc(p.nome) + '</td>' +
+          '<td>' + clientesNovos + '</td>' +
+          '<td>' + comissoesMes.length + '</td>' +
+          '<td>' + malotFormatarCentavos(valorMes) + '</td>' +
+          '<td>' + malotFormatarCentavos(pendenteTotal) + '</td>' +
+          '<td>' + malotFormatarCentavos(pagoTotal) + '</td>' +
+          '</tr>';
+      });
+      document.getElementById('financeiro-parceiros-vazio').style.display = estado.parceiros.length ? 'none' : 'block';
+    }
+
+    // Últimos 12 meses (incluindo o atual), somando pagamentos "pago" por competência.
+    function graficoVendasMensais(){
+      var meses = [];
+      var hoje = new Date();
+      for (var i = 11; i >= 0; i--){
+        var d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+        meses.push({ chave: d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-01', ano: d.getFullYear(), mes: d.getMonth() });
+      }
+      var nomesMes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+      var dados = meses.map(function(m){
+        var total = estado.pagamentos
+          .filter(function(p){ return p.status === 'pago' && p.competencia === m.chave; })
+          .reduce(function(s,p){ return s + p.valor_centavos; }, 0);
+        return { label: nomesMes[m.mes] + '/' + String(m.ano).slice(2), valor: total };
+      });
+
+      var max = Math.max.apply(null, dados.map(function(d){ return d.valor; }).concat([1]));
+      var w = 760, h = 220, padL = 8, padR = 8, padT = 10, padB = 28;
+      var plotW = w - padL - padR, plotH = h - padT - padB;
+      var n = dados.length;
+      var slot = plotW / n;
+      var barW = Math.min(30, slot * 0.55);
+
+      var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:auto;" role="img" aria-label="Vendas por mês, últimos 12 meses">';
+      // linha de base recessiva
+      svg += '<line x1="' + padL + '" y1="' + (padT+plotH) + '" x2="' + (padL+plotW) + '" y2="' + (padT+plotH) + '" stroke="var(--border)" stroke-width="1"/>';
+
+      dados.forEach(function(d, i){
+        var bh = max > 0 ? Math.round((d.valor / max) * (plotH - 6)) : 0;
+        var x = padL + i * slot + (slot - barW) / 2;
+        var y = padT + plotH - bh;
+        var r = Math.min(4, bh);
+        svg += '<g>';
+        if (bh > 0){
+          svg += '<path d="M' + x + ',' + (y+r) +
+            ' a' + r + ',' + r + ' 0 0 1 ' + r + ',-' + r +
+            ' h' + (barW - 2*r) +
+            ' a' + r + ',' + r + ' 0 0 1 ' + r + ',' + r +
+            ' v' + (bh - r) +
+            ' h-' + barW + ' z" fill="var(--accent)">' +
+            '<title>' + d.label + ': ' + malotFormatarCentavos(d.valor) + '</title>' +
+            '</path>';
+        } else {
+          svg += '<rect x="' + x + '" y="' + (padT+plotH-2) + '" width="' + barW + '" height="2" fill="var(--border)"><title>' + d.label + ': ' + malotFormatarCentavos(0) + '</title></rect>';
+        }
+        svg += '<text class="chart-mes" data-mod="' + (i % 3) + '" x="' + (x + barW/2) + '" y="' + (h - 8) + '" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">' + d.label + '</text>';
+        svg += '</g>';
+      });
+
+      svg += '</svg>';
+      return svg;
+    }
+
+    function renderAutorizacoes(){
+      var tbl = document.getElementById('tbl-autorizacoes');
+      tbl.innerHTML = '';
+      estado.pendentes.forEach(function(u){
+        var tipoLabel = u.tipo === 'parceiro' ? 'Parceiro' : (u.tipo === 'empresa' ? 'Empresa' : (u.tipo === 'cliente' ? 'Condomínio' : 'Morador/colaborador'));
+        tbl.innerHTML += '<tr>' +
+          '<td>' + esc(u.email) + '</td>' +
+          '<td>' + tipoLabel + '</td>' +
+          '<td>' + esc(u.nome || '—') + '</td>' +
+          '<td>' + malotFormatarData(u.criado_em) + '</td>' +
+          '<td><button type="button" class="btn btn-primary btn-sm" data-liberar="' + u.user_id + '">Liberar acesso</button></td>' +
+          '</tr>';
+      });
+      document.getElementById('autorizacoes-vazio').style.display = estado.pendentes.length ? 'none' : 'block';
+
+      tbl.querySelectorAll('[data-liberar]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var meuBtn = this;
+          meuBtn.disabled = true; meuBtn.textContent = 'Liberando...';
+          try {
+            var r = await malote.rpc('admin_confirmar_email', { p_user_id: meuBtn.getAttribute('data-liberar') });
+            if (r.error) throw r.error;
+            malotToast('Acesso liberado!', 'ok');
+            carregarTudo();
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+            meuBtn.disabled = false; meuBtn.textContent = 'Liberar acesso';
+          }
+        });
+      });
+    }
+
+    function parceiroDoCondominio(condominioId){
+      var link = estado.links.filter(function(l){ return l.condominio_id === condominioId; })[0];
+      if (!link) return null;
+      return estado.parceiros.filter(function(p){ return p.id === link.parceiro_id; })[0] || null;
+    }
+
+    function renderParceiros(){
+      var pctTexto = Math.round((estado.config.percentual || 0) * 10000) / 100 + '%';
+      document.getElementById('parceiros-pct-hint').innerHTML =
+        'Cada parceiro recebe <strong>' + pctTexto + '</strong> do valor de cada pagamento dos clientes que ele trouxe. Pra mudar esse percentual, use a aba "Config".';
+
+      var tbl = document.getElementById('tbl-parceiros');
+      tbl.innerHTML = '';
+      estado.parceiros.forEach(function(p){
+        var clientes = estado.links.filter(function(l){ return l.parceiro_id === p.id; }).length;
+        var pendente = estado.comissoes.filter(function(c){ return c.parceiro_id === p.id && c.status === 'pendente'; }).reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+        var paga = estado.comissoes.filter(function(c){ return c.parceiro_id === p.id && c.status === 'paga'; }).reduce(function(s,c){ return s + c.valor_centavos; }, 0);
+        var link = location.origin + '/indicar/' + encodeURIComponent(p.codigo);
+        var badge = p.status === 'ativo' ? '<span class="badge badge-ok">ativo</span>' : '<span class="badge badge-muted">inativo</span>';
+        var pctDoParceiro = p.percentual_customizado != null
+          ? (Math.round(p.percentual_customizado * 10000) / 100 + '% <span class="hint" style="margin:0;">(próprio)</span>')
+          : pctTexto;
+        tbl.innerHTML +=
+          '<tr>' +
+          '<td>' + esc(p.nome) + '<br><span class="hint" style="margin:0;">' + esc(p.email) + '</span></td>' +
+          '<td class="mono">' + esc(p.codigo) + '</td>' +
+          '<td>' + badge + '</td>' +
+          '<td>' + clientes + '</td>' +
+          '<td class="mono">' + pctDoParceiro + '</td>' +
+          '<td>' + malotFormatarCentavos(pendente) + '</td>' +
+          '<td>' + malotFormatarCentavos(paga) + '</td>' +
+          '<td><button type="button" class="btn btn-outline btn-sm" data-copiar="' + esc(link) + '">Copiar link</button></td>' +
+          '<td>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-editar="' + p.id + '">Editar</button> ' +
+            '<button type="button" class="btn btn-outline btn-sm" data-toggle="' + p.id + '">' + (p.status === 'ativo' ? 'Inativar' : 'Ativar') + '</button> ' +
+            '<button type="button" class="btn btn-outline btn-sm" data-excluir-parceiro="' + p.id + '" data-nome="' + esc(p.nome) + '">Excluir</button>' +
+          '</td>' +
+          '</tr>';
+      });
+      document.getElementById('parceiros-vazio').style.display = estado.parceiros.length ? 'none' : 'block';
+
+      tbl.querySelectorAll('[data-copiar]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          navigator.clipboard.writeText(btn.getAttribute('data-copiar')).then(function(){ malotToast('Link copiado!', 'ok'); });
+        });
+      });
+      tbl.querySelectorAll('[data-editar]').forEach(function(btn){
+        btn.addEventListener('click', function(){ iniciarEdicaoParceiro(btn.getAttribute('data-editar')); });
+      });
+      tbl.querySelectorAll('[data-toggle]').forEach(function(btn){
+        btn.addEventListener('click', function(){ alternarStatusParceiro(btn.getAttribute('data-toggle')); });
+      });
+      tbl.querySelectorAll('[data-excluir-parceiro]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var id = this.getAttribute('data-excluir-parceiro');
+          var nome = this.getAttribute('data-nome');
+          var ok = confirm('Excluir "' + nome + '" de vez?\n\nIsso apaga o cadastro do parceiro e o vínculo com os clientes que ele indicou — não tem como desfazer. Se ele tiver comissão no histórico financeiro, a exclusão é bloqueada pra não perder esse registro.');
+          if (!ok) return;
+          var meuBtn = this;
+          meuBtn.disabled = true; meuBtn.textContent = 'Excluindo...';
+          try {
+            var r = await malote.rpc('admin_excluir_parceiro', { p_parceiro_id: id });
+            if (r.error) throw r.error;
+            malotToast('Parceiro excluído.', 'ok');
+            carregarTudo();
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+            meuBtn.disabled = false; meuBtn.textContent = 'Excluir';
+          }
+        });
+      });
+    }
+
+    function iniciarEdicaoParceiro(id){
+      var p = estado.parceiros.filter(function(x){ return x.id === id; })[0];
+      if (!p) return;
+      estado.editandoParceiroId = id;
+      document.getElementById('form-parceiro-titulo').textContent = 'Editar parceiro';
+      document.getElementById('p-nome').value = p.nome;
+      document.getElementById('p-email').value = p.email;
+      document.getElementById('p-codigo').value = p.codigo;
+      document.getElementById('p-status').value = p.status;
+      document.getElementById('p-percentual').value = p.percentual_customizado != null ? String(Math.round(p.percentual_customizado * 10000) / 100) : '';
+      document.getElementById('btn-cancelar-edicao').style.display = 'inline-flex';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.getElementById('btn-cancelar-edicao').addEventListener('click', function(){
+      estado.editandoParceiroId = null;
+      document.getElementById('form-parceiro-titulo').textContent = 'Novo parceiro';
+      ['p-nome','p-email','p-codigo','p-percentual'].forEach(function(id){ document.getElementById(id).value = ''; });
+      document.getElementById('p-status').value = 'ativo';
+      this.style.display = 'none';
+    });
+
+    async function alternarStatusParceiro(id, motivoForcado){
+      var p = estado.parceiros.filter(function(x){ return x.id === id; })[0];
+      if (!p) return;
+      var vaiBloquear = p.status === 'ativo';
+      var payload;
+      if (vaiBloquear){
+        var motivo = motivoForcado !== undefined ? motivoForcado : prompt('Motivo do bloqueio (opcional):', '');
+        if (motivo === null) return; // cancelou o prompt
+        payload = { status: 'inativo', bloqueado_motivo: motivo || null, bloqueado_em: new Date().toISOString() };
+      } else {
+        payload = { status: 'ativo', bloqueado_motivo: null, bloqueado_em: null };
+      }
+      var r = await malote.from('parceiros').update(payload).eq('id', id);
+      if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+      malotToast(vaiBloquear ? 'Acesso do parceiro bloqueado.' : 'Acesso do parceiro liberado.', 'ok');
+      carregarTudo();
+    }
+
+    document.getElementById('btn-salvar-parceiro').addEventListener('click', async function(){
+      var nome = document.getElementById('p-nome').value.trim();
+      var email = document.getElementById('p-email').value.trim();
+      var codigo = document.getElementById('p-codigo').value.trim().toUpperCase();
+      var status = document.getElementById('p-status').value;
+      var percentualTxt = document.getElementById('p-percentual').value.trim();
+      if (!nome || !email || !codigo){ malotToast('Preencha nome, e-mail e código.', 'erro'); return; }
+      var percentualCustom = null;
+      if (percentualTxt){
+        var pctNum = parseFloat(percentualTxt.replace(',', '.'));
+        if (isNaN(pctNum) || pctNum <= 0 || pctNum > 100){ malotToast('Percentual de comissão inválido.', 'erro'); return; }
+        percentualCustom = pctNum / 100;
+      }
+
+      var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+      try {
+        if (estado.editandoParceiroId){
+          var r = await malote.from('parceiros').update({ nome: nome, email: email, codigo: codigo, status: status, percentual_customizado: percentualCustom }).eq('id', estado.editandoParceiroId);
+          if (r.error) throw r.error;
+          malotToast('Parceiro atualizado!', 'ok');
+        } else {
+          var ins = await malote.from('parceiros').insert({ nome: nome, email: email, codigo: codigo, status: status, percentual_customizado: percentualCustom });
+          if (ins.error) throw ins.error;
+          malotToast('Parceiro criado!', 'ok');
+        }
+        document.getElementById('btn-cancelar-edicao').click();
+        carregarTudo();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Salvar parceiro';
+      }
+    });
+
+    function renderSelects(){
+      var ativos = estado.parceiros.filter(function(p){ return p.status === 'ativo'; });
+      var optsParceiros = ativos.map(function(p){ return '<option value="' + p.id + '">' + esc(p.nome) + ' (' + esc(p.codigo) + ')</option>'; }).join('');
+      document.getElementById('convite-parceiro').innerHTML = '<option value="">Selecione...</option>' + optsParceiros;
+      document.getElementById('troca-parceiro').innerHTML = '<option value="">Selecione...</option>' + optsParceiros;
+      document.getElementById('cli-parceiro').innerHTML = '<option value="">Venda direta (sem parceiro)</option>' + optsParceiros;
+
+      var optsCondominios = estado.condominios.map(function(c){ return '<option value="' + c.id + '">' + esc(c.nome) + '</option>'; }).join('');
+      document.getElementById('troca-condominio').innerHTML = '<option value="">Selecione...</option>' + optsCondominios;
+      document.getElementById('pg-condominio').innerHTML = '<option value="">Selecione...</option>' + optsCondominios;
+
+      var valorAssocAtual = document.getElementById('assoc-select').value;
+      var optsTodosParceiros = estado.parceiros.map(function(p){ return '<option value="' + p.id + '">' + esc(p.nome) + ' (' + esc(p.codigo) + ')</option>'; }).join('');
+      document.getElementById('assoc-select').innerHTML = '<option value="">Selecione...</option>' + optsTodosParceiros;
+      if (valorAssocAtual && estado.parceiros.some(function(p){ return p.id === valorAssocAtual; })){
+        document.getElementById('assoc-select').value = valorAssocAtual;
+        renderAssociadoDetalhe();
+      }
+    }
+
+    function renderAssociadoDetalhe(){
+      var id = document.getElementById('assoc-select').value;
+      var detalhe = document.getElementById('assoc-detalhe');
+      if (!id){ detalhe.style.display = 'none'; return; }
+      var p = estado.parceiros.filter(function(x){ return x.id === id; })[0];
+      if (!p){ detalhe.style.display = 'none'; return; }
+      detalhe.style.display = 'block';
+
+      var pctEfetivo = p.percentual_customizado != null ? p.percentual_customizado : estado.config.percentual;
+      var pctTexto = Math.round((pctEfetivo || 0) * 10000) / 100 + '%';
+      document.getElementById('assoc-nome').textContent = p.nome;
+      document.getElementById('assoc-info').innerHTML =
+        esc(p.email) + ' · código <span class="mono">' + esc(p.codigo) + '</span> · ' +
+        (p.status === 'ativo' ? '<span class="badge badge-ok">ativo</span>' : '<span class="badge badge-muted">bloqueado</span>') +
+        ' · comissão <strong>' + pctTexto + '</strong>' + (p.percentual_customizado != null ? ' <span class="hint" style="margin:0;">(própria)</span>' : '');
+
+      var motivoEl = document.getElementById('assoc-motivo');
+      if (p.status !== 'ativo' && p.bloqueado_motivo){
+        motivoEl.textContent = 'Motivo do bloqueio: ' + p.bloqueado_motivo;
+        motivoEl.style.display = 'block';
+      } else {
+        motivoEl.style.display = 'none';
+      }
+
+      document.getElementById('btn-assoc-bloquear').style.display = p.status === 'ativo' ? 'inline-flex' : 'none';
+      document.getElementById('btn-assoc-liberar').style.display = p.status === 'ativo' ? 'none' : 'inline-flex';
+
+      var tblClientes = document.getElementById('tbl-assoc-clientes');
+      tblClientes.innerHTML = '';
+      var linksDele = estado.links.filter(function(l){ return l.parceiro_id === id; });
+      linksDele.forEach(function(l){
+        var cond = estado.condominios.filter(function(c){ return c.id === l.condominio_id; })[0];
+        if (!cond) return;
+        var acesso = cond.bloqueado ? '<span class="badge badge-danger">bloqueado</span>' : '<span class="badge badge-ok">liberado</span>';
+        tblClientes.innerHTML += '<tr><td>' + esc(cond.nome) + '</td><td>' + malotFormatarData(l.criado_em) + '</td><td>' + acesso + '</td></tr>';
+      });
+      document.getElementById('assoc-clientes-vazio').style.display = linksDele.length ? 'none' : 'block';
+
+      var tblComissoes = document.getElementById('tbl-assoc-comissoes');
+      tblComissoes.innerHTML = '';
+      var comissoesDele = estado.comissoes.filter(function(c){ return c.parceiro_id === id; });
+      comissoesDele.forEach(function(c){
+        var badge = c.status === 'paga' ? '<span class="badge badge-ok">paga</span>'
+          : (c.status === 'pendente' ? '<span class="badge badge-warn">pendente</span>' : '<span class="badge badge-danger">cancelada</span>');
+        tblComissoes.innerHTML += '<tr>' +
+          '<td>' + (c.status === 'pendente' ? '<input type="checkbox" data-assoc-comissao="' + c.id + '">' : '') + '</td>' +
+          '<td>' + esc(c.condominio_nome || '—') + '</td>' +
+          '<td>' + malotFormatarCompetencia(c.competencia) + '</td>' +
+          '<td>' + malotFormatarCentavos(c.valor_centavos) + '</td>' +
+          '<td>' + badge + '</td><td>' + pagoEmComAutor(c) + '</td></tr>';
+      });
+      document.getElementById('assoc-comissoes-vazio').style.display = comissoesDele.length ? 'none' : 'block';
+    }
+
+    document.getElementById('assoc-select').addEventListener('change', renderAssociadoDetalhe);
+
+    document.getElementById('btn-assoc-bloquear').addEventListener('click', async function(){
+      var id = document.getElementById('assoc-select').value;
+      if (!id) return;
+      await alternarStatusParceiro(id);
+    });
+    document.getElementById('btn-assoc-liberar').addEventListener('click', async function(){
+      var id = document.getElementById('assoc-select').value;
+      if (!id) return;
+      await alternarStatusParceiro(id);
+    });
+
+    document.getElementById('btn-assoc-liberar-pagamento').addEventListener('click', async function(){
+      var ids = Array.prototype.slice.call(document.querySelectorAll('[data-assoc-comissao]:checked')).map(function(el){ return el.getAttribute('data-assoc-comissao'); });
+      if (!ids.length){ malotToast('Selecione ao menos uma comissão pendente.', 'erro'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Liberando...';
+      try {
+        var r = await malote.rpc('pagar_comissoes', { p_ids: ids });
+        if (r.error) throw r.error;
+        malotToast(ids.length + ' comissão(ões) marcada(s) como paga.', 'ok');
+        carregarTudo();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Liberar pagamento das selecionadas';
+      }
+    });
+
+    // Alterna o aviso de "e-mail opcional" x "e-mail obrigatório" conforme o
+    // admin preenche (ou não) a senha de acesso.
+    document.getElementById('cli-senha').addEventListener('input', function(){
+      var comSenha = this.value.trim().length > 0;
+      document.getElementById('cli-email-obrig').style.display = comSenha ? 'inline' : 'none';
+      document.getElementById('cli-email-opc').style.display = comSenha ? 'none' : 'inline';
+    });
+
+    var cliTipoConta = 'condominial';
+    function selecionarCliTipoConta(tipo){
+      cliTipoConta = tipo;
+      document.getElementById('cli-tipo-condominial').className = 'btn ' + (tipo === 'condominial' ? 'btn-primary' : 'btn-outline');
+      document.getElementById('cli-tipo-empresarial').className = 'btn ' + (tipo === 'empresarial' ? 'btn-primary' : 'btn-outline');
+      document.getElementById('cli-nome-label').textContent = tipo === 'empresarial' ? 'Nome fantasia da empresa' : 'Nome do condomínio';
+      document.getElementById('cli-empresa-extra').style.display = tipo === 'empresarial' ? 'block' : 'none';
+    }
+    document.getElementById('cli-tipo-condominial').addEventListener('click', function(){ selecionarCliTipoConta('condominial'); });
+    document.getElementById('cli-tipo-empresarial').addEventListener('click', function(){ selecionarCliTipoConta('empresarial'); });
+
+    document.getElementById('btn-gerar-senha').addEventListener('click', function(){
+      var alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      var senha = '';
+      for (var i = 0; i < 10; i++) senha += alfabeto.charAt(Math.floor(Math.random() * alfabeto.length));
+      var campo = document.getElementById('cli-senha');
+      campo.value = senha;
+      campo.dispatchEvent(new Event('input'));
+    });
+
+    document.getElementById('btn-copiar-credenciais').addEventListener('click', function(){
+      var txt = document.getElementById('cli-credenciais-texto').textContent;
+      navigator.clipboard.writeText(txt).then(function(){ malotToast('Credenciais copiadas!', 'ok'); });
+    });
+
+    document.getElementById('btn-cadastrar-cliente').addEventListener('click', async function(){
+      var nome = document.getElementById('cli-nome').value.trim();
+      var email = document.getElementById('cli-email').value.trim();
+      var parceiroId = document.getElementById('cli-parceiro').value || null;
+      var testeDiasTxt = document.getElementById('cli-teste-dias').value;
+      var testeDias = testeDiasTxt ? parseInt(testeDiasTxt, 10) : 0;
+      var senha = document.getElementById('cli-senha').value.trim();
+      var razaoSocial = document.getElementById('cli-razao-social').value.trim();
+      var cnpj = document.getElementById('cli-cnpj').value.trim();
+      var qtdColaboradoresTxt = document.getElementById('cli-qtd-colaboradores').value;
+      var qtdColaboradores = qtdColaboradoresTxt ? parseInt(qtdColaboradoresTxt, 10) : null;
+      if (!nome){ malotToast(cliTipoConta === 'empresarial' ? 'Preencha o nome fantasia da empresa.' : 'Preencha o nome do condomínio.', 'erro'); return; }
+      if (testeDiasTxt && (!testeDias || testeDias < 1 || testeDias > 60)){ malotToast('O teste grátis precisa ser de 1 a 60 dias.', 'erro'); return; }
+      if (cliTipoConta === 'empresarial' && !senha){ malotToast('Cadastro de empresa por aqui exige preencher uma senha (o fluxo sem senha ainda é só pra condomínio). Você pode gerar uma automaticamente.', 'erro'); return; }
+      document.getElementById('cli-credenciais-box').style.display = 'none';
+
+      var btn = this; btn.disabled = true; btn.textContent = 'Cadastrando...';
+      try {
+        if (senha){
+          // fluxo com login já pronto: precisa de e-mail válido, cria a
+          // conta de verdade (e-mail já confirmado) e vincula o condomínio
+          // a ela na mesma hora, via edge function (usa a service role pra
+          // poder criar o usuário — isso não dá pra fazer só com RPC).
+          if (!email){ malotToast('Com senha preenchida, o e-mail é obrigatório.', 'erro'); btn.disabled = false; btn.textContent = 'Cadastrar cliente'; return; }
+          if (senha.length < 6){ malotToast('A senha precisa ter pelo menos 6 caracteres.', 'erro'); btn.disabled = false; btn.textContent = 'Cadastrar cliente'; return; }
+
+          var rf = await malote.functions.invoke('admin-criar-conta-condominio', {
+            body: {
+              nome: nome, email: email, senha: senha, parceiro_id: parceiroId,
+              dias_teste: testeDias || null, motivo_teste: testeDias ? 'Teste grátis concedido no cadastro com login pronto' : null,
+              tipo_operacao: cliTipoConta, razao_social: cliTipoConta === 'empresarial' ? (razaoSocial || null) : null,
+              cnpj: cliTipoConta === 'empresarial' ? (cnpj || null) : null,
+              qtd_colaboradores_contratados: cliTipoConta === 'empresarial' ? (qtdColaboradores || null) : null
+            }
+          });
+          if (rf.error) throw rf.error;
+          if (rf.data && rf.data.error) throw new Error(rf.data.error);
+
+          document.getElementById('cli-credenciais-texto').textContent = 'E-mail: ' + email + '  |  Senha: ' + senha + '  |  Entrar em: ' + location.origin + '/parceiros/login.html';
+          document.getElementById('cli-credenciais-box').style.display = 'flex';
+          malotToast((rf.data && rf.data.aviso) ? rf.data.aviso : 'Conta criada e pronta pra usar! Copie as credenciais abaixo e repasse pro síndico.', 'ok');
+        } else {
+          // fluxo tradicional: só cadastra, esperando ele criar a própria conta depois
+          var r = await malote.rpc('admin_cadastrar_cliente', { p_nome: nome, p_email: email || null, p_parceiro_id: parceiroId });
+          if (r.error) throw r.error;
+
+          var msg = 'Cliente cadastrado!';
+          if (testeDias > 0){
+            var rt = await malote.rpc('admin_conceder_teste_gratuito', { p_condominio_id: r.data.id, p_dias: testeDias, p_motivo: 'Teste grátis concedido no cadastro' });
+            if (rt.error){
+              // o cliente já foi cadastrado; só avisa que o teste não pegou, sem desfazer o cadastro
+              malotToast('Cliente cadastrado, mas não deu pra liberar o teste grátis: ' + malotErroMsg(rt.error), 'erro');
+            } else {
+              msg = 'Cliente cadastrado com ' + testeDias + ' dia(s) de teste grátis já liberado!';
+            }
+          }
+          malotToast(msg, 'ok');
+        }
+        document.getElementById('cli-nome').value = '';
+        document.getElementById('cli-email').value = '';
+        document.getElementById('cli-parceiro').value = '';
+        document.getElementById('cli-teste-dias').value = '';
+        document.getElementById('cli-senha').value = '';
+        document.getElementById('cli-razao-social').value = '';
+        document.getElementById('cli-cnpj').value = '';
+        document.getElementById('cli-qtd-colaboradores').value = '';
+        selecionarCliTipoConta('condominial');
+        document.getElementById('cli-senha').dispatchEvent(new Event('input'));
+        carregarTudo();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Cadastrar cliente';
+      }
+    });
+
+    document.getElementById('convite-parceiro').addEventListener('change', function(){
+      var p = estado.parceiros.filter(function(x){ return x.id === this.value; }, this)[0];
+      document.getElementById('convite-link').textContent = p ? (location.origin + '/indicar/' + encodeURIComponent(p.codigo)) : 'Escolha um parceiro acima';
+    });
+    document.getElementById('btn-copiar-convite').addEventListener('click', function(){
+      var txt = document.getElementById('convite-link').textContent;
+      if (!txt || txt.indexOf('http') !== 0){ malotToast('Escolha um parceiro primeiro.', 'erro'); return; }
+      navigator.clipboard.writeText(txt).then(function(){ malotToast('Link copiado!', 'ok'); });
+    });
+
+    document.getElementById('btn-trocar-parceiro').addEventListener('click', async function(){
+      var condominioId = document.getElementById('troca-condominio').value;
+      var parceiroId = document.getElementById('troca-parceiro').value;
+      var motivo = document.getElementById('troca-motivo').value.trim();
+      if (!condominioId || !parceiroId){ malotToast('Escolha o cliente e o novo parceiro.', 'erro'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Trocando...';
+      try {
+        var r = await malote.rpc('trocar_parceiro', { p_condominio_id: condominioId, p_novo_parceiro_id: parceiroId, p_motivo: motivo || null });
+        if (r.error) throw r.error;
+        malotToast('Parceiro trocado.', 'ok');
+        document.getElementById('troca-motivo').value = '';
+        carregarTudo();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Trocar parceiro';
+      }
+    });
+
+    // Mostra o próximo vencimento com um selo de urgência: sem selo se está
+    // longe, "vence em breve" se faltam 5 dias ou menos, "atrasado" se já
+    // passou — pra bater com o mesmo aviso que o síndico vê no painel dele.
+    function vencimentoBadge(c){
+      if (!c.proximo_vencimento) return '<span class="hint" style="margin:0;">—</span>';
+      var texto = malotFormatarDataSimples(c.proximo_vencimento);
+      var partes = c.proximo_vencimento.split('-');
+      var venc = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+      var hoje = new Date(); hoje.setHours(0,0,0,0);
+      var dias = Math.round((venc - hoje) / 86400000);
+      if (dias < 0) return texto + '<br><span class="badge badge-danger">atrasado</span>';
+      if (dias <= 5) return texto + '<br><span class="badge badge-warn">vence em breve</span>';
+      return texto;
+    }
+
+    // Monta a linha da tabela comum a condomínio e empresa — só muda a
+    // coluna "extra" (Apartamentos pra condomínio, Estrutura pra empresa) e
+    // o rótulo genérico (não precisa mais do badge de tipo, já que agora
+    // condomínio e empresa vivem em tabelas/seções separadas).
+    function linhaCliente(c, colunaExtra){
+      var p = parceiroDoCondominio(c.id);
+      var login = c.user_id
+        ? '<span class="badge badge-ok">ativo</span>'
+        : '<span class="badge badge-muted">aguardando</span>';
+      var acesso = c.bloqueado
+        ? '<span class="badge badge-danger">bloqueado</span>' + (c.bloqueado_motivo ? '<br><span class="hint" style="margin:0;">' + esc(c.bloqueado_motivo) + '</span>' : '')
+        : '<span class="badge badge-ok">liberado</span>';
+      if (c.ultima_acao_acesso_por){
+        acesso += '<br><span class="hint" style="margin:0;">por ' + esc(nomeAdmin(c.ultima_acao_acesso_por)) + ', ' + malotFormatarData(c.ultima_acao_acesso_em) + '</span>';
+      }
+      var acaoBtn = c.bloqueado
+        ? '<button type="button" class="btn btn-outline btn-sm" data-desbloquear="' + c.id + '">Desbloquear</button>'
+        : '<button type="button" class="btn btn-danger btn-sm" data-bloquear="' + c.id + '">Bloquear</button>';
+      acaoBtn += ' <button type="button" class="btn btn-outline btn-sm" data-cortesia="' + c.id + '" data-nome="' + esc(c.nome) + '">Cortesia</button>';
+      acaoBtn += ' <button type="button" class="btn btn-outline btn-sm" data-teste="' + c.id + '" data-nome="' + esc(c.nome) + '">Teste grátis</button>';
+      acaoBtn += ' <button type="button" class="btn btn-outline btn-sm" data-excluir="' + c.id + '" data-nome="' + esc(c.nome) + '">Excluir</button>';
+      var planoTxt = c.plano === 'pago' ? 'Pago' : (c.em_teste ? '<span class="badge badge-warn">em teste</span>' : 'Grátis');
+      var cidadeUf = (c.cidade || c.uf) ? (esc(c.cidade || '—') + (c.uf ? '/' + esc(c.uf) : '')) : '<span class="hint" style="margin:0;">—</span>';
+      return '<tr><td>' + esc(c.nome) + (c.email ? '<br><span class="hint" style="margin:0;">' + esc(c.email) + '</span>' : '') + '</td>' +
+        '<td>' + cidadeUf + '</td>' +
+        '<td>' + planoTxt + '</td>' +
+        '<td>' + (p ? esc(p.nome) : '<span class="hint" style="margin:0;">venda direta</span>') + '</td>' +
+        '<td>' + colunaExtra + '</td>' +
+        '<td>' + vencimentoBadge(c) + '</td>' +
+        '<td>' + login + '</td>' +
+        '<td>' + acesso + '</td>' +
+        '<td>' + malotFormatarData(c.criado_em) + '</td>' +
+        '<td>' + acaoBtn + '</td></tr>';
+    }
+
+    function renderClientes(){
+      var condominiosCond = estado.condominios.filter(function(c){ return c.tipo_operacao !== 'empresarial'; });
+      var condominiosEmp = estado.condominios.filter(function(c){ return c.tipo_operacao === 'empresarial'; });
+
+      // ---- quantidades (condomínio x empresa, nunca somadas juntas) ----
+      document.getElementById('stat-total-condominios').textContent = String(condominiosCond.length);
+      document.getElementById('stat-total-blocos').textContent = String(condominiosCond.reduce(function(s,c){ return s + (c.qtd_blocos || 0); }, 0));
+      document.getElementById('stat-total-apartamentos').textContent = String(condominiosCond.reduce(function(s,c){ return s + (c.qtd_apartamentos || 0); }, 0));
+      document.getElementById('stat-total-empresas').textContent = String(condominiosEmp.length);
+      document.getElementById('stat-total-unidades').textContent = String(estado.unidades.length);
+      document.getElementById('stat-total-setores').textContent = String(estado.setores.length);
+      document.getElementById('stat-total-colaboradores').textContent = String(estado.colaboradores.length);
+
+      // ---- tabela de condomínios ----
+      var tblCond = document.getElementById('tbl-clientes-condominios');
+      tblCond.innerHTML = condominiosCond.map(function(c){
+        var colunaExtra = (c.qtd_apartamentos || '—') + (c.qtd_blocos ? '<br><span class="hint" style="margin:0;">' + c.qtd_blocos + ' bloco(s)</span>' : '');
+        return linhaCliente(c, colunaExtra);
+      }).join('');
+      document.getElementById('clientes-condominios-vazio').style.display = condominiosCond.length ? 'none' : 'block';
+
+      // ---- tabela de empresas ----
+      var tblEmp = document.getElementById('tbl-clientes-empresas');
+      tblEmp.innerHTML = condominiosEmp.map(function(c){
+        var qtdUnidades = estado.unidades.filter(function(u){ return u.condominio_id === c.id; }).length;
+        var qtdSetores = estado.setores.filter(function(s){ return s.condominio_id === c.id; }).length;
+        var qtdColaboradores = estado.colaboradores.filter(function(x){ return x.condominio_id === c.id; }).length;
+        var colunaExtra = qtdUnidades + ' unidade(s) · ' + qtdSetores + ' setor(es) · ' + qtdColaboradores + ' colaborador(es)' +
+          (c.qtd_colaboradores_contratados ? '<br><span class="hint" style="margin:0;">contratado: ' + c.qtd_colaboradores_contratados + '</span>' : '');
+        return linhaCliente(c, colunaExtra);
+      }).join('');
+      document.getElementById('clientes-empresas-vazio').style.display = condominiosEmp.length ? 'none' : 'block';
+
+      // ---- ações (comuns às duas tabelas — os ids não se repetem entre elas) ----
+      var tbl = document;
+      tbl.querySelectorAll('[data-bloquear]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var id = this.getAttribute('data-bloquear');
+          var motivo = prompt('Motivo do bloqueio (opcional):', 'Falta de pagamento') || null;
+          var meuBtn = this;
+          meuBtn.disabled = true; meuBtn.textContent = 'Bloqueando...';
+          try {
+            var r = await malote.rpc('admin_bloquear_acesso', { p_condominio_id: id, p_bloqueado: true, p_motivo: motivo });
+            if (r.error) throw r.error;
+            malotToast('Acesso bloqueado.', 'ok');
+            carregarTudo();
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+            meuBtn.disabled = false; meuBtn.textContent = 'Bloquear';
+          }
+        });
+      });
+      tbl.querySelectorAll('[data-desbloquear]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var id = this.getAttribute('data-desbloquear');
+          var ok = confirm('Isso libera o acesso manualmente, mas NÃO conta como pagamento confirmado: não atualiza o vencimento nem gera comissão de associado. Pra confirmar um pagamento de verdade (Pix ou cartão), use a aba Financeiro → "Registrar pagamento". Desbloquear assim mesmo?');
+          if (!ok) return;
+          var meuBtn = this;
+          meuBtn.disabled = true; meuBtn.textContent = 'Desbloqueando...';
+          try {
+            var r = await malote.rpc('admin_bloquear_acesso', { p_condominio_id: id, p_bloqueado: false });
+            if (r.error) throw r.error;
+            malotToast('Acesso liberado de novo.', 'ok');
+            carregarTudo();
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+            meuBtn.disabled = false; meuBtn.textContent = 'Desbloquear';
+          }
+        });
+      });
+      tbl.querySelectorAll('[data-excluir]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var id = this.getAttribute('data-excluir');
+          var nome = this.getAttribute('data-nome');
+          var ok = confirm('Excluir "' + nome + '" de vez?\n\nIsso apaga o cadastro, os moradores, as encomendas e o histórico de pagamentos desse cliente — não tem como desfazer. Se ele tiver comissão de associado no histórico, a exclusão é bloqueada pra não perder esse registro.');
+          if (!ok) return;
+          var meuBtn = this;
+          meuBtn.disabled = true; meuBtn.textContent = 'Excluindo...';
+          try {
+            var r = await malote.rpc('admin_excluir_cliente', { p_condominio_id: id });
+            if (r.error) throw r.error;
+            malotToast('Cliente excluído.', 'ok');
+            carregarTudo();
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+            meuBtn.disabled = false; meuBtn.textContent = 'Excluir';
+          }
+        });
+      });
+      tbl.querySelectorAll('[data-cortesia]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var id = this.getAttribute('data-cortesia');
+          var nome = this.getAttribute('data-nome');
+          var mesesTxt = prompt('Quantos meses de cortesia dar pra "' + nome + '"?\n\nSoma a partir do vencimento atual (ou de hoje, se já estiver vencido) — libera o acesso na hora e não gera comissão de associado.', '1');
+          if (mesesTxt === null) return;
+          var meses = parseInt(String(mesesTxt).replace(/\D/g, ''), 10);
+          if (!meses || meses <= 0){ malotToast('Digite uma quantidade de meses válida.', 'erro'); return; }
+          var motivo = prompt('Motivo (opcional):', 'Bônus pelo primeiro pagamento') || null;
+          var meuBtn = this;
+          meuBtn.disabled = true; meuBtn.textContent = 'Aplicando...';
+          try {
+            var r = await malote.rpc('admin_conceder_cortesia', { p_condominio_id: id, p_meses: meses, p_motivo: motivo });
+            if (r.error) throw r.error;
+            malotToast(meses + ' mês(es) de cortesia concedido(s)! Novo vencimento: ' + malotFormatarDataSimples(r.data.proximo_vencimento) + '.', 'ok');
+            carregarTudo();
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+            meuBtn.disabled = false; meuBtn.textContent = 'Cortesia';
+          }
+        });
+      });
+      tbl.querySelectorAll('[data-teste]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var id = this.getAttribute('data-teste');
+          var nome = this.getAttribute('data-nome');
+          var diasTxt = prompt('Liberar teste grátis pra "' + nome + '" por quantos dias (1 a 60)?\n\nEx: 10, 15, 30... Libera o acesso na hora, sem gerar comissão de associado. Quando o prazo acabar, o Malote bloqueia o acesso sozinho automaticamente (aviso de "período de teste encerrado").', '30');
+          if (diasTxt === null) return;
+          var dias = parseInt(String(diasTxt).replace(/\D/g, ''), 10);
+          if (!dias || dias < 1 || dias > 60){ malotToast('Digite de 1 a 60 dias.', 'erro'); return; }
+          var motivo = prompt('Motivo (opcional):', 'Teste grátis para avaliação') || null;
+          var meuBtn = this;
+          meuBtn.disabled = true; meuBtn.textContent = 'Aplicando...';
+          try {
+            var r = await malote.rpc('admin_conceder_teste_gratuito', { p_condominio_id: id, p_dias: dias, p_motivo: motivo });
+            if (r.error) throw r.error;
+            malotToast('Teste grátis de ' + dias + ' dia(s) liberado! Vai bloquear sozinho em ' + malotFormatarDataSimples(r.data.proximo_vencimento) + ' se não virar cliente pago.', 'ok');
+            carregarTudo();
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+            meuBtn.disabled = false; meuBtn.textContent = 'Teste grátis';
+          }
+        });
+      });
+    }
+
+    function renderCortesias(){
+      var tbl = document.getElementById('tbl-cortesias');
+      if (!tbl) return;
+      var lista = estado.cortesias || [];
+      tbl.innerHTML = lista.map(function(c){
+        var tipo = c.eh_teste ? '<span class="badge badge-warn">teste grátis</span>' : '<span class="badge badge-muted">cortesia</span>';
+        var duracao = (c.dias != null) ? (c.dias + ' dia(s)') : (c.meses + ' mês(es)');
+        return '<tr><td>' + esc(c.condominio_nome) + '</td>' +
+          '<td>' + tipo + ' ' + duracao + '</td>' +
+          '<td>' + (c.motivo ? esc(c.motivo) : '<span class="hint" style="margin:0;">—</span>') + '</td>' +
+          '<td>' + (c.concedido_por_nome ? esc(c.concedido_por_nome) : '—') + '</td>' +
+          '<td>' + malotFormatarData(c.concedido_em) + '</td></tr>';
+      }).join('');
+      document.getElementById('cortesias-vazio').style.display = lista.length ? 'none' : 'block';
+    }
+
+    function renderPagamentos(){
+      var tbl = document.getElementById('tbl-pagamentos');
+      tbl.innerHTML = '';
+      estado.pagamentos.forEach(function(pg){
+        var cond = estado.condominios.filter(function(c){ return c.id === pg.condominio_id; })[0];
+        var origem = pg.origem === 'mercadopago'
+          ? '<span class="badge badge-ok">Mercado Pago</span>'
+          : '<span class="badge badge-muted">Manual</span>';
+        var registradoPor = pg.registrado_por
+          ? esc(nomeAdmin(pg.registrado_por))
+          : '<span class="hint" style="margin:0;">' + (pg.origem === 'mercadopago' ? 'automático' : '—') + '</span>';
+        tbl.innerHTML += '<tr><td>' + (cond ? esc(cond.nome) : '—') + '</td><td>' + malotFormatarCompetencia(pg.competencia) + '</td>' +
+          '<td>' + malotFormatarCentavos(pg.valor_centavos) + '</td><td>' + origem + '</td><td>' + registradoPor + '</td><td>' + esc(pg.status) + '</td>' +
+          '<td><select data-status-pagamento="' + pg.id + '">' +
+            ['pendente','pago','estornado','cancelado','reembolsado'].map(function(s){
+              return '<option value="' + s + '"' + (s === pg.status ? ' selected' : '') + '>' + s + '</option>';
+            }).join('') +
+          '</select></td></tr>';
+      });
+      document.getElementById('pagamentos-vazio').style.display = estado.pagamentos.length ? 'none' : 'block';
+
+      tbl.querySelectorAll('[data-status-pagamento]').forEach(function(sel){
+        sel.addEventListener('change', async function(){
+          var id = this.getAttribute('data-status-pagamento');
+          var novo = this.value;
+          var r = await malote.from('pagamentos_assinatura').update({ status: novo }).eq('id', id);
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          malotToast('Status do pagamento atualizado.', 'ok');
+          carregarTudo();
+        });
+      });
+    }
+
+    document.getElementById('btn-registrar-pagamento').addEventListener('click', async function(){
+      var condominioId = document.getElementById('pg-condominio').value;
+      var valor = realParaCentavos(document.getElementById('pg-valor').value);
+      var competenciaMes = document.getElementById('pg-competencia').value; // yyyy-mm
+      var status = document.getElementById('pg-status').value;
+      if (!condominioId || valor == null || !competenciaMes){ malotToast('Preencha cliente, valor e competência.', 'erro'); return; }
+
+      var btn = this; btn.disabled = true; btn.textContent = 'Registrando...';
+      try {
+        var r = await malote.from('pagamentos_assinatura').insert({
+          condominio_id: condominioId, valor_centavos: valor, competencia: competenciaMes + '-01', status: status
+        });
+        if (r.error) throw r.error;
+        malotToast('Pagamento registrado!', 'ok');
+        document.getElementById('pg-valor').value = '';
+        carregarTudo();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Registrar';
+      }
+    });
+
+    function pagoEmComAutor(c){
+      if (!c.pago_em) return '—';
+      var texto = malotFormatarData(c.pago_em);
+      if (c.pago_por) texto += '<br><span class="hint" style="margin:0;">por ' + esc(nomeAdmin(c.pago_por)) + '</span>';
+      return texto;
+    }
+
+    function renderComissoes(){
+      var tbl = document.getElementById('tbl-comissoes');
+      tbl.innerHTML = '';
+      estado.comissoes.forEach(function(c){
+        var nomeParceiro = c.parceiros ? c.parceiros.nome : '—';
+        var badge = c.status === 'paga' ? '<span class="badge badge-ok">paga</span>'
+          : (c.status === 'pendente' ? '<span class="badge badge-warn">pendente</span>' : '<span class="badge badge-danger">cancelada</span>');
+        tbl.innerHTML += '<tr>' +
+          '<td>' + (c.status === 'pendente' ? '<input type="checkbox" data-comissao="' + c.id + '">' : '') + '</td>' +
+          '<td>' + esc(nomeParceiro) + '</td><td>' + esc(c.condominio_nome || '—') + '</td>' +
+          '<td>' + malotFormatarCompetencia(c.competencia) + '</td><td>' + malotFormatarCentavos(c.valor_centavos) + '</td>' +
+          '<td>' + badge + '</td><td>' + pagoEmComAutor(c) + '</td></tr>';
+      });
+      document.getElementById('comissoes-vazio').style.display = estado.comissoes.length ? 'none' : 'block';
+    }
+
+    function renderRelatorios(){
+      var tbl = document.getElementById('tbl-relatorios');
+      tbl.innerHTML = '';
+      estado.relatorios.forEach(function(rel){
+        var nomeParceiro = rel.parceiros ? rel.parceiros.nome : '—';
+        var badge = rel.status === 'resolvido' ? '<span class="badge badge-ok">resolvido</span>'
+          : (rel.status === 'visto' ? '<span class="badge badge-warn">visto</span>' : '<span class="badge badge-muted">novo</span>');
+        var acoes = '';
+        if (rel.status === 'novo'){
+          acoes = '<button type="button" class="btn btn-outline btn-sm" data-marcar-relatorio="' + rel.id + '" data-status="visto">Marcar visto</button>';
+        } else if (rel.status === 'visto'){
+          acoes = '<button type="button" class="btn btn-outline btn-sm" data-marcar-relatorio="' + rel.id + '" data-status="resolvido">Marcar resolvido</button>';
+        }
+        tbl.innerHTML += '<tr>' +
+          '<td>' + esc(nomeParceiro) + '</td>' +
+          '<td>' + malotFormatarData(rel.criado_em) + '</td>' +
+          '<td>' + rel.clientes_total + ' (' + rel.clientes_mes + ' no mês)</td>' +
+          '<td>' + malotFormatarCentavos(rel.comissao_pendente_centavos) + '</td>' +
+          '<td>' + malotFormatarCentavos(rel.comissao_paga_centavos) + '</td>' +
+          '<td>' + (rel.mensagem ? esc(rel.mensagem) : '<span class="hint" style="margin:0;">—</span>') + '</td>' +
+          '<td>' + badge + '</td>' +
+          '<td>' + acoes + '</td>' +
+          '</tr>';
+      });
+      document.getElementById('relatorios-vazio').style.display = estado.relatorios.length ? 'none' : 'block';
+
+      tbl.querySelectorAll('[data-marcar-relatorio]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var id = this.getAttribute('data-marcar-relatorio');
+          var novoStatus = this.getAttribute('data-status');
+          var sessao = await malotSessao();
+          var meuBtn = this;
+          meuBtn.disabled = true;
+          try {
+            var r = await malote.from('relatorios_parceiro').update({
+              status: novoStatus, visto_em: new Date().toISOString(), visto_por: sessao ? sessao.user.id : null
+            }).eq('id', id);
+            if (r.error) throw r.error;
+            malotToast('Relatório atualizado.', 'ok');
+            carregarTudo();
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+            meuBtn.disabled = false;
+          }
+        });
+      });
+    }
+
+    document.getElementById('btn-pagar-selecionadas').addEventListener('click', async function(){
+      var ids = Array.prototype.slice.call(document.querySelectorAll('[data-comissao]:checked')).map(function(el){ return el.getAttribute('data-comissao'); });
+      if (!ids.length){ malotToast('Selecione ao menos uma comissão pendente.', 'erro'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Pagando...';
+      try {
+        var r = await malote.rpc('pagar_comissoes', { p_ids: ids });
+        if (r.error) throw r.error;
+        malotToast(ids.length + ' comissão(ões) marcada(s) como paga.', 'ok');
+        carregarTudo();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Pagar selecionadas';
+      }
+    });
+
+    async function carregarConfig(){
+      var r = await malote.from('config_comissao').select('*').limit(1).single();
+      if (r.error) return;
+      document.getElementById('cfg-percentual').value = String(Math.round(r.data.percentual * 10000) / 100);
+      document.getElementById('cfg-teto').value = r.data.teto_centavos != null ? centavosParaReal(r.data.teto_centavos) : '';
+    }
+
+    document.getElementById('btn-salvar-config').addEventListener('click', async function(){
+      var pct = parseFloat(document.getElementById('cfg-percentual').value.replace(',', '.'));
+      if (isNaN(pct) || pct <= 0 || pct > 100){ malotToast('Percentual inválido.', 'erro'); return; }
+      var tetoTxt = document.getElementById('cfg-teto').value.trim();
+      var teto = tetoTxt ? realParaCentavos(tetoTxt) : null;
+
+      var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+      try {
+        var r = await malote.from('config_comissao').update({ percentual: pct / 100, teto_centavos: teto }).eq('id', true);
+        if (r.error) throw r.error;
+        estado.config.percentual = pct / 100;
+        estado.config.teto_centavos = teto;
+        renderParceiros();
+        malotToast('Configuração salva.', 'ok');
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Salvar';
+      }
+    });
+
+    async function iniciar(){
+      var sessao = await malotExigirSessao('login.html');
+      if (!sessao) return;
+
+      var admin = await malote.from('admins_plataforma').select('user_id').eq('user_id', sessao.user.id).maybeSingle();
+      document.getElementById('carregando').style.display = 'none';
+      if (admin.error || !admin.data){
+        document.getElementById('sem-acesso').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('conteudo').style.display = 'block';
+      await carregarTudo();
+      await carregarConfig();
+    }
+
+    iniciar();
+  </script>
+  <div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="/parceiros/assets/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>

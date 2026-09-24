@@ -1,0 +1,16 @@
+{
+  "name": "Malote - Minhas Encomendas",
+  "short_name": "Malote Colaborador",
+  "description": "Acompanhe suas encomendas na empresa e receba um aviso assim que elas chegarem.",
+  "start_url": "/parceiros/portal-colaborador.html",
+  "id": "/parceiros/portal-colaborador.html",
+  "scope": "/parceiros/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E9EFFA",
+  "theme_color": "#0E1B33",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,1187 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meu condomínio — Malote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/parceiros/assets/estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+  .pico-grafico{ display:flex; align-items:flex-end; gap:2px; height:110px; margin-top:14px; }
+  .pico-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .pico-bar{ width:100%; max-width:14px; background:var(--border); border-radius:3px 3px 0 0; min-height:3px; }
+  .pico-bar-max{ background:var(--accent); }
+  .pico-label{ font-size:9px; color:var(--ink-muted); margin-top:4px; }
+
+  /* Painel do síndico em layout de dashboard: menu lateral fixo + uma
+     página de conteúdo por vez, em vez de todos os cartões empilhados
+     um embaixo do outro numa coluna só. */
+  .dash-wide{ max-width:1180px; margin:0 auto; padding:0 16px 60px; }
+  .dash-shell{ display:flex; align-items:flex-start; gap:24px; margin-top:4px; }
+  .dash-sidebar{
+    width:210px; flex-shrink:0; position:sticky; top:78px;
+    display:flex; flex-direction:column; gap:2px;
+  }
+  .dash-sidebar .dash-nav-btn, .dash-sidebar a{
+    display:flex; align-items:center; width:100%; text-align:left;
+    padding:10px 14px; border-radius:9px; border:none; background:none; cursor:pointer;
+    font-size:14px; color:var(--ink-muted); font-family:inherit; text-decoration:none;
+  }
+  .dash-sidebar .dash-nav-btn:hover, .dash-sidebar a:hover{ background:var(--paper-2); color:var(--ink); }
+  .dash-sidebar .dash-nav-btn.active{ background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .dash-sidebar .dash-sep{ height:1px; background:var(--border); margin:10px 6px; }
+  .dash-content{ flex:1; min-width:0; }
+  .dash-content .card:first-child{ margin-top:0; }
+  @media (max-width:820px){
+    .dash-shell{ flex-direction:column; gap:0; }
+    .dash-sidebar{
+      position:static; width:100%; flex-direction:row; overflow-x:auto;
+      gap:6px; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--border);
+      -webkit-overflow-scrolling:touch;
+    }
+    .dash-sidebar .dash-nav-btn, .dash-sidebar a{ white-space:nowrap; width:auto; padding:8px 12px; }
+    .dash-sidebar .dash-sep{ display:none; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-badge" id="topbar-brand-badge" src="/icons/icon-192.png" alt="Malote">
+      <div><div class="word">Malote</div><div class="sub">Meu condomínio</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotVoltar('../index.html')">Leitor de Etiqueta</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotSair()">Sair</button>
+    </div>
+  </div>
+
+  <div class="shell narrow" id="shell-onboarding">
+    <div id="carregando" class="center-loading"><span class="spinner"></span> Carregando...</div>
+
+    <div id="passo-onboarding" class="card" style="display:none;">
+      <h2>Só falta um passo</h2>
+      <p class="hint">Confirme os dados do seu condomínio pra ativar a conta.</p>
+      <div class="field"><label>Nome do condomínio</label><input type="text" id="f-nome" placeholder="Ex: Residencial Jardim das Flores"></div>
+      <div class="form-grid">
+        <div class="field"><label>Quantidade de blocos/torres</label><input type="number" id="f-blocos" min="1" step="1" value="1"></div>
+        <div class="field"><label>Quantidade de apartamentos</label><input type="number" id="f-apartamentos" min="1" step="1" placeholder="Ex: 48"></div>
+      </div>
+      <p class="hint" id="onboarding-valor-hint" style="margin-top:-4px;">Mensalidade: <strong>R$ 59,90/mês</strong> (até 60 apartamentos).</p>
+      <div class="form-grid">
+        <div class="field"><label>CEP</label><input type="text" id="f-cep" placeholder="Ex: 01310-100" inputmode="numeric" maxlength="9"></div>
+        <div class="field"><label>Número</label><input type="text" id="f-numero" placeholder="Ex: 123"></div>
+      </div>
+      <div class="field"><label>Endereço</label><input type="text" id="f-endereco" placeholder="Rua, avenida..."></div>
+      <div class="field"><label>Bairro</label><input type="text" id="f-bairro" placeholder="Ex: Centro"></div>
+      <div class="form-grid">
+        <div class="field"><label>Cidade</label><input type="text" id="f-cidade" placeholder="Ex: São Paulo"></div>
+        <div class="field"><label>UF</label>
+          <select id="f-uf">
+            <option value="">Selecione...</option>
+            <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option>
+            <option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option>
+            <option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option>
+            <option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+            <option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option>
+            <option>SE</option><option>TO</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions"><button type="button" class="btn btn-primary" id="btn-finalizar" style="width:100%;">Concluir cadastro</button></div>
+    </div>
+  </div>
+
+  <div class="dash-wide" id="area-logada" style="display:none;">
+    <div id="painel" class="card" style="display:none;">
+      <h2 id="nome-condominio">—</h2>
+      <p class="hint" style="margin-bottom:0;"><span id="acesso-badge" class="badge badge-danger" style="display:none;">acesso bloqueado</span></p>
+      <p class="hint" id="vencimento-info" style="display:none;margin-bottom:0;margin-top:4px;"></p>
+    </div>
+
+    <div id="painel-bloqueado" class="card" style="display:none;">
+      <p class="hint" id="bloqueado-motivo"></p>
+      <h2 style="margin-bottom:4px;">Pagar agora</h2>
+      <p class="hint">Assinatura do Malote — <strong id="valor-mensalidade">R$ 59,90/mês</strong>.</p>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="btn-pagar-cartao" style="width:100%;">Pagar com Pix, crédito ou débito</button>
+      </div>
+      <p class="hint" style="margin-top:6px;">Liberação automática assim que o pagamento for aprovado — normalmente na hora.</p>
+      <div class="actions">
+        <button type="button" class="btn btn-outline" id="btn-verificar-liberacao" style="width:100%;">Já paguei, verificar liberação</button>
+      </div>
+    </div>
+
+    <div class="dash-shell">
+      <nav class="dash-sidebar">
+        <button type="button" class="dash-nav-btn active" data-page="dashboard">Dashboard</button>
+        <button type="button" class="dash-nav-btn" data-page="historico">Histórico de entregas</button>
+        <button type="button" class="dash-nav-btn" data-page="nao-retirado">Quem não retirou</button>
+        <button type="button" class="dash-nav-btn" data-page="pagamentos">Pagamentos</button>
+        <button type="button" class="dash-nav-btn" data-page="portaria">Portaria</button>
+        <button type="button" class="dash-nav-btn" data-page="dados">Dados do condomínio</button>
+        <div class="dash-sep"></div>
+        <a href="../index.html?tab=ler" id="dash-link-ler">Ler etiqueta</a>
+        <a href="../index.html?tab=moradores" id="dash-link-moradores">Moradores</a>
+        <a href="../index.html?tab=historico" id="dash-link-backup">Backup de dados</a>
+      </nav>
+
+      <div class="dash-content">
+        <div id="dash-page-dashboard" class="dash-page">
+
+    <div id="painel-pico" class="card" style="display:none;">
+      <h2 style="margin-bottom:4px;">Horário de pico de entregas</h2>
+      <p class="hint" id="pico-resumo">Carregando...</p>
+      <div class="pico-grafico" id="pico-grafico"></div>
+    </div>
+
+    <div id="painel-dashboard" class="card" style="display:none;">
+      <h2 style="margin-bottom:4px;">Dashboard de entregas</h2>
+      <p class="hint">Movimento dos últimos 30 dias.</p>
+      <div class="stat-grid">
+        <div class="stat"><div class="num" id="dash-aguardando">—</div><div class="lbl">Aguardando retirada</div></div>
+        <div class="stat"><div class="num" id="dash-retiradas-30d">—</div><div class="lbl">Retiradas (30 dias)</div></div>
+        <div class="stat"><div class="num" id="dash-tempo-medio">—</div><div class="lbl">Tempo médio de retirada</div></div>
+        <div class="stat" id="dash-atrasadas-tile"><div class="num" id="dash-atrasadas">—</div><div class="lbl">Esperando há mais de 3 dias</div></div>
+      </div>
+      <div id="dash-grafico-wrap"></div>
+    </div>
+
+        </div>
+
+        <div id="dash-page-historico" class="dash-page" style="display:none;">
+          <div id="painel-historico" class="card">
+            <h2 style="margin-bottom:4px;">Histórico de entregas</h2>
+            <p class="hint">Todas as encomendas registradas, com data de chegada e de retirada.</p>
+            <div class="actions" style="margin-top:0;margin-bottom:14px;">
+              <button type="button" class="btn btn-primary btn-sm hist-filtro" data-periodo="30">30 dias</button>
+              <button type="button" class="btn btn-outline btn-sm hist-filtro" data-periodo="7">7 dias</button>
+              <button type="button" class="btn btn-outline btn-sm hist-filtro" data-periodo="90">90 dias</button>
+              <button type="button" class="btn btn-outline btn-sm hist-filtro" data-periodo="0">Tudo</button>
+            </div>
+            <p class="hint" id="historico-vazio" style="display:none;margin-bottom:0;">Nenhuma encomenda nesse período.</p>
+            <div class="table-wrap" id="historico-tabela-wrap" style="display:none;">
+              <table>
+                <thead><tr><th>Morador</th><th>Chegou em</th><th>Status</th><th>Retirado em</th><th>Retirado por</th></tr></thead>
+                <tbody id="historico-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div id="dash-page-nao-retirado" class="dash-page" style="display:none;">
+
+    <div id="painel-nao-retirado" class="card" style="display:none;">
+      <h2 style="margin-bottom:4px;">Quem ainda não retirou</h2>
+      <p class="hint" id="nao-retirado-vazio" style="display:none;margin-bottom:0;">Nenhuma encomenda esperando retirada no momento.</p>
+      <div class="table-wrap" id="nao-retirado-tabela-wrap" style="display:none;">
+        <table>
+          <thead><tr><th>Morador</th><th>Chegou em</th><th>Esperando há</th><th>Avisar</th></tr></thead>
+          <tbody id="nao-retirado-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+        </div>
+
+        <div id="dash-page-pagamentos" class="dash-page" style="display:none;">
+
+    <div id="painel-pagamentos" class="card" style="display:none;">
+      <h2 style="margin-bottom:4px;">Pagamentos</h2>
+      <p class="hint">Mesmos valores e competências que aparecem no financeiro da administração.</p>
+      <p class="hint" id="pagamentos-vazio" style="display:none;margin-bottom:0;">Nenhum pagamento registrado ainda.</p>
+      <div class="table-wrap" id="pagamentos-tabela-wrap" style="display:none;">
+        <table>
+          <thead><tr><th>Competência</th><th>Valor</th><th>Status</th><th>Ação</th></tr></thead>
+          <tbody id="pagamentos-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+        </div>
+
+        <div id="dash-page-portaria" class="dash-page" style="display:none;">
+
+    <div class="card">
+      <h2 id="port-form-titulo">Nova portaria / recepção</h2>
+      <p class="hint">Cadastre o porteiro, porteira ou recepção pelo nome. Essa pessoa recebe um login próprio, mas só enxerga o leitor de etiqueta e a lista de quem já retirou / não retirou — nada do resto do sistema.</p>
+      <input type="hidden" id="port-editando-id" value="">
+      <div class="form-grid">
+        <div class="field"><label>Nome</label><input type="text" id="port-nome" placeholder="Ex: Seu Antônio"></div>
+        <div class="field"><label>Cargo</label><input type="text" id="port-cargo" placeholder="Ex: Porteiro, Porteira, Recepção" value="Porteiro(a)"></div>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>WhatsApp (opcional)</label><input type="text" id="port-whatsapp" placeholder="Ex: 81 98765-4321"></div>
+      </div>
+      <div class="form-grid" id="port-acesso-campos">
+        <div class="field"><label>E-mail de login</label><input type="email" id="port-email" placeholder="porteiro@email.com"></div>
+        <div class="field"><label>Senha</label><input type="password" id="port-senha" placeholder="Mínimo 6 caracteres"></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="btn-add-portaria">Cadastrar portaria</button>
+        <button type="button" class="btn btn-outline" id="btn-cancelar-portaria" style="display:none;">Cancelar edição</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Portaria / recepção cadastrada</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nome</th><th>Cargo</th><th>Login</th><th>Status</th><th></th></tr></thead>
+          <tbody id="tbl-portaria"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="portaria-vazio" style="display:none;">Nenhum porteiro/recepção cadastrado ainda.</div>
+    </div>
+
+        </div>
+
+        <div id="dash-page-dados" class="dash-page" style="display:none;">
+
+    <div id="painel-editar" class="card" style="display:none;">
+      <h2 style="margin-bottom:4px;">Dados do condomínio</h2>
+      <p class="hint">Mudou a quantidade de blocos ou apartamentos, ou o endereço está errado? Atualize aqui — a mensalidade é recalculada automaticamente a partir da próxima cobrança.</p>
+      <div class="field">
+        <label>Foto do condomínio</label>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <span id="perfil-preview" style="display:inline-block;"></span>
+          <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+            Escolher foto
+            <input type="file" accept="image/*" id="f-perfil-foto-input" style="display:none;">
+          </label>
+          <button type="button" class="btn btn-outline btn-sm" id="btn-remover-perfil-foto" style="display:none;">Remover foto</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Quantidade de blocos/torres</label><input type="number" id="f-editar-blocos" min="1" step="1"></div>
+        <div class="field"><label>Quantidade de apartamentos</label><input type="number" id="f-editar-apartamentos" min="1" step="1"></div>
+      </div>
+      <p class="hint" id="editar-valor-hint" style="margin-top:-4px;"></p>
+      <div class="form-grid">
+        <div class="field"><label>CEP</label><input type="text" id="f-editar-cep" placeholder="Ex: 01310-100" inputmode="numeric" maxlength="9"></div>
+        <div class="field"><label>Número</label><input type="text" id="f-editar-numero" placeholder="Ex: 123"></div>
+      </div>
+      <div class="field"><label>Endereço</label><input type="text" id="f-editar-endereco" placeholder="Rua, avenida..."></div>
+      <div class="field"><label>Bairro</label><input type="text" id="f-editar-bairro" placeholder="Ex: Centro"></div>
+      <div class="form-grid">
+        <div class="field"><label>Cidade</label><input type="text" id="f-editar-cidade" placeholder="Ex: São Paulo"></div>
+        <div class="field"><label>UF</label>
+          <select id="f-editar-uf">
+            <option value="">Selecione...</option>
+            <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option>
+            <option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option>
+            <option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option>
+            <option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+            <option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option>
+            <option>SE</option><option>TO</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions"><button type="button" class="btn btn-outline" id="btn-salvar-dados" style="width:100%;">Salvar alterações</button></div>
+    </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="/parceiros/assets/supabase-client.js"></script>
+  <script src="/parceiros/assets/ref-capture.js"></script>
+  <script>
+    var sessaoAtual = null;
+    var nomeCondominioAtual = null;
+    var meuCondominioId = null;
+    var condominioFotoPath = null;    // caminho salvo no banco (foto_perfil_path)
+    var perfilFotoDataUrl = null;     // foto nova escolhida, ainda não salva
+    var perfilFotoRemovida = false;   // marcado pra tirar a foto atual ao salvar
+
+    function renderPerfilPreview(){
+      var el = document.getElementById('perfil-preview');
+      if (!el) return;
+      var removerBtn = document.getElementById('btn-remover-perfil-foto');
+      var html;
+      if (perfilFotoDataUrl){
+        html = '<img src="' + perfilFotoDataUrl + '" alt="" style="width:96px;height:96px;border-radius:18px;object-fit:cover;display:block;">';
+      } else if (condominioFotoPath && !perfilFotoRemovida){
+        html = '<img src="' + malotFotoPerfilUrl(condominioFotoPath) + '" alt="" style="width:96px;height:96px;border-radius:18px;object-fit:cover;display:block;">';
+      } else {
+        html = '<div style="width:96px;height:96px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:700;font-size:30px;">' + malotIniciais(nomeCondominioAtual) + '</div>';
+      }
+      el.innerHTML = html;
+      if (removerBtn) removerBtn.style.display = (perfilFotoDataUrl || (condominioFotoPath && !perfilFotoRemovida)) ? 'inline-flex' : 'none';
+    }
+
+    document.getElementById('f-perfil-foto-input').addEventListener('change', function(e){
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        var img = new Image();
+        img.onload = function(){
+          var maxW = 400;
+          var scale = Math.min(1, maxW / img.width);
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          perfilFotoDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          perfilFotoRemovida = false;
+          renderPerfilPreview();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('btn-remover-perfil-foto').addEventListener('click', function(){
+      perfilFotoDataUrl = null;
+      perfilFotoRemovida = true;
+      renderPerfilPreview();
+    });
+
+    async function finalizarOnboarding(nome, qtdBlocos, qtdApartamentos, endereco){
+      // conta criada por conta própria (sem cadastro prévio do admin) começa
+      // bloqueada, aguardando confirmação do pagamento — o admin libera
+      // manualmente depois que o Pix cai (ou automaticamente, se pagar com cartão).
+      var ins = await malote.from('condominios').insert({
+        user_id: sessaoAtual.user.id, nome: nome,
+        qtd_blocos: qtdBlocos, qtd_apartamentos: qtdApartamentos,
+        cep: (endereco && endereco.cep) || null, endereco: (endereco && endereco.endereco) || null,
+        numero: (endereco && endereco.numero) || null, bairro: (endereco && endereco.bairro) || null,
+        cidade: (endereco && endereco.cidade) || null, uf: (endereco && endereco.uf) || null,
+        bloqueado: true, bloqueado_motivo: 'Aguardando confirmação do pagamento'
+      }).select().single();
+      if (ins.error) throw ins.error;
+
+      var codigo = malotCodigoIndicacaoSalvo();
+      if (codigo){
+        try { await malote.rpc('vincular_parceiro_signup', { p_codigo: codigo }); }
+        catch (e) { /* código inválido: venda direta */ }
+        malotLimparCodigoIndicacao();
+      }
+      return ins.data;
+    }
+
+    async function carregar(){
+      sessaoAtual = await malotExigirSessao('/parceiros/login.html');
+      if (!sessaoAtual) return;
+
+      // porteiro/recepção nunca deve ver este painel — nem chegando aqui por
+      // engano, nem voltando pelo botão "voltar" do navegador/celular depois
+      // de sair de uma tela em cache (bfcache). Checa isso antes de qualquer
+      // outra coisa e manda direto pro leitor, que é a única tela dele.
+      var pcheckSindico = await malote.rpc('auth_porteiro_condominio_id');
+      if (!pcheckSindico.error && pcheckSindico.data){ location.replace('/index.html'); return; }
+
+      var r = await malote.from('condominios').select('*').eq('user_id', sessaoAtual.user.id).maybeSingle();
+      if (r.error && r.error.code !== 'PGRST116') { document.getElementById('carregando').style.display = 'none'; malotToast(malotErroMsg(r.error), 'erro'); return; }
+
+      if (!r.data){
+        // sem condomínio vinculado a esta conta ainda: talvez o admin já
+        // tenha cadastrado esse condomínio com esse mesmo e-mail — tenta
+        // reivindicar antes de pedir pra preencher o onboarding do zero.
+        var claim = await malote.rpc('reivindicar_condominio');
+        if (!claim.error && claim.data && claim.data.id) r = { data: claim.data, error: null };
+      }
+
+      if (!r.data){
+        // ou talvez a pessoa tenha escolhido um condomínio pré-cadastrado na
+        // lista, no cadastro, mas precisou confirmar o e-mail antes de logar
+        // — o id fica guardado até aqui pra completar o vínculo agora.
+        var condIdPendente = '';
+        try { condIdPendente = localStorage.getItem('malote_condominio_selecionado_pendente') || ''; } catch(e){}
+        if (condIdPendente){
+          var claimId = await malote.rpc('reivindicar_condominio_por_id', { p_condominio_id: condIdPendente });
+          if (!claimId.error && claimId.data && claimId.data.id){
+            r = { data: claimId.data, error: null };
+            try { localStorage.removeItem('malote_condominio_selecionado_pendente'); } catch(e){}
+          }
+        }
+      }
+
+      document.getElementById('carregando').style.display = 'none';
+
+      if (!r.data){
+        // conta confirmada agora, mas o condomínio ainda não foi criado
+        // (ex.: veio de um fluxo com confirmação de e-mail obrigatória)
+        var nomePendente = '';
+        var blocosPendente = '';
+        var apartamentosPendente = '';
+        var enderecoPendente = null;
+        try {
+          nomePendente = localStorage.getItem('malote_nome_condominio_pendente') || '';
+          blocosPendente = localStorage.getItem('malote_blocos_condominio_pendente') || '';
+          apartamentosPendente = localStorage.getItem('malote_apartamentos_condominio_pendente') || '';
+          var enderecoPendenteTxt = localStorage.getItem('malote_endereco_condominio_pendente') || '';
+          if (enderecoPendenteTxt) enderecoPendente = JSON.parse(enderecoPendenteTxt);
+        } catch(e){}
+        if (nomePendente){
+          document.getElementById('f-nome').value = nomePendente;
+        }
+        if (blocosPendente) document.getElementById('f-blocos').value = blocosPendente;
+        if (apartamentosPendente){
+          document.getElementById('f-apartamentos').value = apartamentosPendente;
+          atualizarHintValorOnboarding();
+        }
+        if (enderecoPendente){
+          document.getElementById('f-cep').value = enderecoPendente.cep || '';
+          document.getElementById('f-endereco').value = enderecoPendente.endereco || '';
+          document.getElementById('f-numero').value = enderecoPendente.numero || '';
+          document.getElementById('f-bairro').value = enderecoPendente.bairro || '';
+          document.getElementById('f-cidade').value = enderecoPendente.cidade || '';
+          document.getElementById('f-uf').value = enderecoPendente.uf || '';
+        }
+        document.getElementById('passo-onboarding').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('nome-condominio').textContent = r.data.nome;
+      nomeCondominioAtual = r.data.nome;
+      meuCondominioId = r.data.id;
+      condominioFotoPath = r.data.foto_perfil_path || null;
+      perfilFotoDataUrl = null;
+      perfilFotoRemovida = false;
+      renderPerfilPreview();
+      malotAtualizarLogo('topbar-brand-badge', nomeCondominioAtual, condominioFotoPath, { imgClass: 'brand-badge', avatarClass: 'brand-badge brand-badge-iniciais' });
+      document.getElementById('painel').style.display = 'block';
+      document.getElementById('area-logada').style.display = 'block';
+
+      // dias até o vencimento (negativo se já passou). DIAS_AVISO_VENCIMENTO
+      // dias antes, mostramos o card de pagamento de forma antecipada — sem
+      // bloquear nada, só facilitando pra quem quer regularizar cedo.
+      var DIAS_AVISO_VENCIMENTO = 5;
+      var diasParaVencer = null;
+      if (r.data.proximo_vencimento){
+        var hoje0h = new Date(); hoje0h.setHours(0, 0, 0, 0);
+        var venc0h = new Date(r.data.proximo_vencimento + 'T00:00:00');
+        diasParaVencer = Math.round((venc0h - hoje0h) / 86400000);
+      }
+      var venceEmBreve = !r.data.bloqueado && diasParaVencer !== null && diasParaVencer <= DIAS_AVISO_VENCIMENTO;
+
+      if (r.data.bloqueado){
+        document.getElementById('acesso-badge').style.display = 'inline-flex';
+        document.getElementById('bloqueado-motivo').textContent = r.data.bloqueado_motivo
+          ? 'Acesso bloqueado: ' + r.data.bloqueado_motivo
+          : 'O acesso deste condomínio está temporariamente bloqueado. Entre em contato para regularizar.';
+        document.getElementById('painel-bloqueado').style.display = 'block';
+        document.getElementById('dash-link-ler').style.display = 'none';
+        document.getElementById('dash-link-moradores').style.display = 'none';
+        document.getElementById('dash-link-backup').style.display = 'none';
+        document.getElementById('painel-editar').style.display = 'none';
+      } else {
+        document.getElementById('acesso-badge').style.display = 'none';
+        document.getElementById('dash-link-ler').style.display = 'flex';
+        document.getElementById('dash-link-moradores').style.display = 'flex';
+        document.getElementById('dash-link-backup').style.display = 'flex';
+        document.getElementById('painel-editar').style.display = 'block';
+
+        if (venceEmBreve){
+          var textoAviso;
+          if (r.data.em_teste){
+            if (diasParaVencer < 0){
+              textoAviso = 'Seu período de teste grátis (até ' + malotFormatarDataSimples(r.data.proximo_vencimento) + ') já terminou. Fale com a gente pra continuar usando o Malote.';
+            } else if (diasParaVencer === 0){
+              textoAviso = 'Seu período de teste grátis termina hoje (' + malotFormatarDataSimples(r.data.proximo_vencimento) + ').';
+            } else {
+              textoAviso = 'Seu período de teste grátis termina em ' + diasParaVencer + ' dia(s), no dia ' + malotFormatarDataSimples(r.data.proximo_vencimento) + '.';
+            }
+          } else if (diasParaVencer < 0){
+            textoAviso = 'Seu vencimento (' + malotFormatarDataSimples(r.data.proximo_vencimento) + ') já passou. Pague o quanto antes pra evitar o bloqueio automático do acesso.';
+          } else if (diasParaVencer === 0){
+            textoAviso = 'Seu vencimento é hoje (' + malotFormatarDataSimples(r.data.proximo_vencimento) + ').';
+          } else {
+            textoAviso = 'Seu vencimento é em ' + diasParaVencer + ' dia(s), no dia ' + malotFormatarDataSimples(r.data.proximo_vencimento) + '. Pague com antecedência pra evitar o bloqueio automático.';
+          }
+          document.getElementById('bloqueado-motivo').textContent = textoAviso;
+          document.getElementById('painel-bloqueado').style.display = 'block';
+        } else {
+          document.getElementById('painel-bloqueado').style.display = 'none';
+        }
+      }
+
+      var valorMensal = malotCalcularMensalidade(r.data.qtd_apartamentos);
+      document.getElementById('valor-mensalidade').textContent = malotFormatarReais(valorMensal) + '/mês';
+
+      var vencInfo = document.getElementById('vencimento-info');
+      if (!r.data.bloqueado && r.data.proximo_vencimento){
+        vencInfo.textContent = 'Próximo vencimento: ' + malotFormatarDataSimples(r.data.proximo_vencimento);
+        vencInfo.style.display = 'block';
+      } else {
+        vencInfo.style.display = 'none';
+      }
+
+      if (!r.data.bloqueado){
+        document.getElementById('f-editar-blocos').value = r.data.qtd_blocos || 1;
+        document.getElementById('f-editar-apartamentos').value = r.data.qtd_apartamentos || 1;
+        document.getElementById('f-editar-cep').value = r.data.cep || '';
+        document.getElementById('f-editar-endereco').value = r.data.endereco || '';
+        document.getElementById('f-editar-numero').value = r.data.numero || '';
+        document.getElementById('f-editar-bairro').value = r.data.bairro || '';
+        document.getElementById('f-editar-cidade').value = r.data.cidade || '';
+        document.getElementById('f-editar-uf').value = r.data.uf || '';
+        atualizarHintValorEditar();
+      }
+
+      await carregarPagamentos(r.data.id);
+      await carregarPicoHorario();
+      await carregarDashboardEntregas(r.data.id);
+
+      // restaura a última página do menu lateral que a pessoa tinha aberto,
+      // mas só na primeira carga — chamadas seguintes de carregar() (ex.:
+      // depois de salvar os dados do condomínio) não devem "puxar o tapete"
+      // e trocar a página que já está sendo vista na tela.
+      if (!window.__paginaSindicoRestaurada){
+        window.__paginaSindicoRestaurada = true;
+        var paginaSalva = null;
+        try { paginaSalva = localStorage.getItem('malote_sindico_pagina_ativa'); } catch(e){}
+        var paginasValidas = ['dashboard', 'historico', 'nao-retirado', 'pagamentos', 'portaria', 'dados'];
+        if (paginaSalva && paginasValidas.indexOf(paginaSalva) !== -1) mostrarPaginaDash(paginaSalva);
+      }
+    }
+
+    /* ---------- menu lateral do painel: uma página por vez, em vez de
+       todos os cartões empilhados numa coluna só ---------- */
+    function mostrarPaginaDash(pagina){
+      document.querySelectorAll('.dash-page').forEach(function(el){ el.style.display = 'none'; });
+      var alvo = document.getElementById('dash-page-' + pagina);
+      if (alvo) alvo.style.display = 'block';
+      document.querySelectorAll('.dash-nav-btn').forEach(function(btn){
+        btn.classList.toggle('active', btn.getAttribute('data-page') === pagina);
+      });
+      try { localStorage.setItem('malote_sindico_pagina_ativa', pagina); } catch(e){}
+      if (pagina === 'historico' && !window.__historicoCarregado){
+        window.__historicoCarregado = true;
+        carregarHistoricoEntregas(30);
+      }
+      if (pagina === 'portaria' && !window.__portariaCarregada){
+        window.__portariaCarregada = true;
+        carregarPorteiros();
+      }
+    }
+    document.querySelectorAll('.dash-nav-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){ mostrarPaginaDash(this.getAttribute('data-page')); });
+    });
+
+    var historicoPeriodoAtual = 30;
+    async function carregarHistoricoEntregas(periodoDias){
+      if (typeof periodoDias === 'number') historicoPeriodoAtual = periodoDias;
+      if (!meuCondominioId) return;
+
+      var q = malote.from('encomendas')
+        .select('bloco, apto, nome_avulso, criado_em, retirado_em, retirado_por')
+        .eq('condominio_id', meuCondominioId)
+        .order('criado_em', { ascending: false })
+        .limit(300);
+      if (historicoPeriodoAtual > 0){
+        var cutoffIso = new Date(Date.now() - historicoPeriodoAtual * 24 * 60 * 60 * 1000).toISOString();
+        q = q.gte('criado_em', cutoffIso);
+      }
+
+      var wrap = document.getElementById('historico-tabela-wrap');
+      var vazio = document.getElementById('historico-vazio');
+      var r = await q;
+      if (r.error || !r.data || !r.data.length){
+        wrap.style.display = 'none';
+        vazio.style.display = 'block';
+        return;
+      }
+
+      vazio.style.display = 'none';
+      wrap.style.display = 'block';
+      document.getElementById('historico-tbody').innerHTML = r.data.map(function(e){
+        var localTxt = e.bloco ? ('Bloco ' + e.bloco + ', Apto ' + e.apto) : ('Apto ' + e.apto);
+        if (e.nome_avulso) localTxt += ' — ' + e.nome_avulso;
+        var statusBadge = e.retirado_em ? '<span class="badge badge-ok">Retirado</span>' : '<span class="badge badge-warn">Aguardando</span>';
+        return '<tr><td>' + localTxt + '</td>' +
+          '<td>' + malotFormatarData(e.criado_em) + '</td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td>' + (e.retirado_em ? malotFormatarData(e.retirado_em) : '—') + '</td>' +
+          '<td>' + (e.retirado_por || '—') + '</td></tr>';
+      }).join('');
+    }
+    document.querySelectorAll('.hist-filtro').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        document.querySelectorAll('.hist-filtro').forEach(function(b){ b.classList.remove('btn-primary'); b.classList.add('btn-outline'); });
+        this.classList.remove('btn-outline'); this.classList.add('btn-primary');
+        carregarHistoricoEntregas(parseInt(this.getAttribute('data-periodo'), 10));
+      });
+    });
+
+    function atualizarHintValorEditar(){
+      var apartamentos = parseInt(document.getElementById('f-editar-apartamentos').value, 10);
+      var valor = malotCalcularMensalidade(apartamentos);
+      document.getElementById('editar-valor-hint').innerHTML = 'Mensalidade com esses números: <strong>' + malotFormatarReais(valor) + '/mês</strong>.';
+    }
+
+    var PAGAMENTO_STATUS_LABEL = {
+      pago: ['Pago', 'badge-ok'],
+      pendente: ['Pendente', 'badge-warn'],
+      estornado: ['Estornado', 'badge-danger'],
+      cancelado: ['Cancelado', 'badge-muted'],
+      reembolsado: ['Reembolsado', 'badge-muted']
+    };
+
+    // pagamentos_assinatura é o mesmo livro-razão (por competência/mês) que a
+    // administração usa na aba Financeiro do admin — mostrar essa tabela em
+    // vez da "pagamentos" (que só guarda tentativas de cobrança no cartão)
+    // garante que síndico e administração enxergam sempre os mesmos valores.
+    async function carregarPagamentos(condominioId){
+      var r = await malote.from('pagamentos_assinatura').select('*').eq('condominio_id', condominioId).order('competencia', { ascending: false }).limit(24);
+      var wrap = document.getElementById('pagamentos-tabela-wrap');
+      var vazio = document.getElementById('pagamentos-vazio');
+      var tbody = document.getElementById('pagamentos-tbody');
+      document.getElementById('painel-pagamentos').style.display = 'block';
+
+      if (r.error || !r.data || !r.data.length){
+        wrap.style.display = 'none';
+        vazio.style.display = 'block';
+        return;
+      }
+
+      vazio.style.display = 'none';
+      wrap.style.display = 'block';
+      window.__pagamentosCache = {};
+      tbody.innerHTML = r.data.map(function(p){
+        window.__pagamentosCache[p.id] = p;
+        var info = PAGAMENTO_STATUS_LABEL[p.status] || [p.status, 'badge-muted'];
+        var acao;
+        if (p.status === 'pago'){
+          acao = '<button type="button" class="btn btn-outline btn-sm" data-recibo="' + p.id + '">Baixar recibo</button>';
+        } else if (p.status === 'pendente'){
+          // link de pagamento na própria linha da parcela, em vez de só o
+          // botão genérico "Pagar agora" lá em cima.
+          acao = '<button type="button" class="btn btn-primary btn-sm" data-pagar-parcela="' + p.id + '">Pagar</button>';
+        } else {
+          acao = '<span class="hint" style="margin:0;">—</span>';
+        }
+        return '<tr><td>' + malotFormatarCompetencia(p.competencia) + '</td><td>' + malotFormatarCentavos(p.valor_centavos) + '</td>' +
+          '<td><span class="badge ' + info[1] + '">' + info[0] + '</span></td>' +
+          '<td>' + acao + '</td></tr>';
+      }).join('');
+
+      tbody.querySelectorAll('[data-recibo]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          gerarReciboPdf(window.__pagamentosCache[this.getAttribute('data-recibo')]);
+        });
+      });
+      tbody.querySelectorAll('[data-pagar-parcela]').forEach(function(btn){
+        btn.addEventListener('click', function(){ iniciarPagamentoCartao(this); });
+      });
+    }
+
+    async function carregarPicoHorario(){
+      var card = document.getElementById('painel-pico');
+      var resumo = document.getElementById('pico-resumo');
+      var grafico = document.getElementById('pico-grafico');
+
+      var r = await malote.rpc('cliente_pico_horario');
+      if (r.error || !r.data || !r.data.length){ card.style.display = 'none'; return; }
+
+      var dados = r.data;
+      var total = dados.reduce(function(s, d){ return s + Number(d.quantidade); }, 0);
+      card.style.display = 'block';
+
+      if (!total){
+        resumo.textContent = 'Ainda não há encomendas suficientes pra mostrar um horário de pico.';
+        grafico.innerHTML = '';
+        return;
+      }
+
+      var max = 0;
+      dados.forEach(function(d){ if (Number(d.quantidade) > max) max = Number(d.quantidade); });
+      var picoHoras = dados.filter(function(d){ return Number(d.quantidade) === max; }).map(function(d){ return d.hora; });
+      var picoTexto = picoHoras.map(function(h){ return String(h).padStart(2, '0') + 'h'; }).join(', ');
+      resumo.innerHTML = 'Horário de pico: <strong>' + picoTexto + '</strong> (' + max + ' encomenda' + (max === 1 ? '' : 's') + ').';
+
+      grafico.innerHTML = dados.map(function(d){
+        var qtd = Number(d.quantidade);
+        var alturaPct = qtd > 0 ? Math.max(6, Math.round((qtd / max) * 100)) : 2;
+        var ehPico = qtd === max && qtd > 0;
+        var horaStr = String(d.hora).padStart(2, '0');
+        var mostrarLabel = (d.hora % 3 === 0);
+        return '<div class="pico-col" title="' + horaStr + 'h — ' + qtd + ' encomenda(s)">' +
+          '<div class="pico-bar' + (ehPico ? ' pico-bar-max' : '') + '" style="height:' + alturaPct + '%;"></div>' +
+          '<div class="pico-label">' + (mostrarLabel ? horaStr : '&nbsp;') + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    // Botão "Avisar" na lista de quem não retirou: mesma lógica de link do
+    // WhatsApp já usada no leitor de etiqueta (wa.me com o número com DDI),
+    // só que aqui a mensagem é de cobrança/lembrete, não de aviso de chegada.
+    function escHtmlNaoRetirado(s){
+      return (s || '').replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; });
+    }
+    function digitsNaoRetirado(s){ return (s || '').replace(/\D/g, ''); }
+    function waLinkLembrete(telefone, nome, remetente, codigo){
+      var d = digitsNaoRetirado(telefone);
+      if (!d) return null;
+      if (d.length > 0 && d.length <= 11) d = '55' + d;
+      var primeiroNome = (nome || '').trim().split(' ')[0] || 'morador(a)';
+      var msg = 'Ola, ' + primeiroNome + '! Sua encomenda' + (remetente ? ' de ' + remetente : '') + ' ainda esta esperando retirada na portaria.';
+      if (codigo) msg += ' Codigo: ' + codigo + '.';
+      return 'https://wa.me/' + d + '?text=' + encodeURIComponent(msg);
+    }
+
+    // Dashboard: pico de entregas/retiradas por dia (últimos 30 dias) e a
+    // lista de quem ainda não retirou, ordenada por tempo esperando. RLS de
+    // `encomendas` já restringe isso ao próprio condomínio, então a query
+    // abaixo não precisa (nem pode) filtrar por outra coisa além do id dele.
+    async function carregarDashboardEntregas(condominioId){
+      var cardDash = document.getElementById('painel-dashboard');
+      var cardNaoRetirado = document.getElementById('painel-nao-retirado');
+
+      var cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      var cutoffIso = cutoff.toISOString();
+
+      // pega: tudo recebido nos últimos 30 dias (pro lado "entregas" do
+      // gráfico) + tudo que ainda está pendente (não importa a idade, pra
+      // lista de "quem não retirou") + tudo retirado nos últimos 30 dias
+      // (pro lado "retiradas" do gráfico, mesmo se recebido antes da janela).
+      var r = await malote.from('encomendas')
+        .select('bloco, apto, nome_avulso, telefone_avulso, remetente, codigo, criado_em, retirado_em, moradores(nome, whatsapp)')
+        .eq('condominio_id', condominioId)
+        .or('criado_em.gte.' + cutoffIso + ',retirado_em.is.null,retirado_em.gte.' + cutoffIso)
+        .order('criado_em', { ascending: true });
+
+      if (r.error || !r.data){ cardDash.style.display = 'none'; cardNaoRetirado.style.display = 'none'; return; }
+
+      cardDash.style.display = 'block';
+      cardNaoRetirado.style.display = 'block';
+
+      var dias = [];
+      var mapaDia = {};
+      for (var i = 29; i >= 0; i--){
+        var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+        var chave = d.toISOString().slice(0, 10);
+        var ponto = { chave: chave, label: String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'), v1: 0, v2: 0 };
+        dias.push(ponto);
+        mapaDia[chave] = ponto;
+      }
+
+      var pendentes = [];
+      var qtdRetiradas30d = 0;
+      var somaTempoRetiradaMs = 0;
+
+      r.data.forEach(function(e){
+        var chaveCriado = (e.criado_em || '').slice(0, 10);
+        if (mapaDia[chaveCriado]) mapaDia[chaveCriado].v1++;
+
+        if (e.retirado_em){
+          var chaveRetirado = e.retirado_em.slice(0, 10);
+          if (mapaDia[chaveRetirado]) mapaDia[chaveRetirado].v2++;
+          if (new Date(e.retirado_em) >= cutoff){
+            qtdRetiradas30d++;
+            somaTempoRetiradaMs += (new Date(e.retirado_em) - new Date(e.criado_em));
+          }
+        } else {
+          pendentes.push(e);
+        }
+      });
+
+      document.getElementById('dash-aguardando').textContent = pendentes.length;
+      document.getElementById('dash-retiradas-30d').textContent = qtdRetiradas30d;
+      document.getElementById('dash-tempo-medio').textContent = qtdRetiradas30d ? malotFormatarEspera(somaTempoRetiradaMs / qtdRetiradas30d) : '—';
+
+      var agora = Date.now();
+      var LIMITE_ATRASO_MS = 3 * 24 * 60 * 60 * 1000; // 3 dias esperando = atrasada
+      var LIMITE_ALERTA_MS = 24 * 60 * 60 * 1000; // 1 dia esperando = atenção
+      var atrasadas = pendentes.filter(function(e){ return (agora - new Date(e.criado_em).getTime()) > LIMITE_ATRASO_MS; });
+      document.getElementById('dash-atrasadas').textContent = atrasadas.length;
+      document.getElementById('dash-atrasadas-tile').classList.toggle('alerta', atrasadas.length > 0);
+
+      document.getElementById('dash-grafico-wrap').innerHTML = malotGraficoDuasSeries(dias, {
+        nome1: 'Entregas recebidas',
+        nome2: 'Retiradas',
+        ariaLabel: 'Entregas recebidas e retiradas por dia, últimos 30 dias',
+        formatarValor: function(v){ return v + (v === 1 ? ' encomenda' : ' encomendas'); }
+      });
+
+      pendentes.sort(function(a, b){ return new Date(a.criado_em) - new Date(b.criado_em); }); // mais antigo (mais tempo esperando) primeiro
+
+      var wrap = document.getElementById('nao-retirado-tabela-wrap');
+      var vazio = document.getElementById('nao-retirado-vazio');
+      if (!pendentes.length){
+        wrap.style.display = 'none';
+        vazio.style.display = 'block';
+        return;
+      }
+      vazio.style.display = 'none';
+      wrap.style.display = 'block';
+
+      document.getElementById('nao-retirado-tbody').innerHTML = pendentes.map(function(e){
+        var esperaMs = agora - new Date(e.criado_em).getTime();
+        var nomeMorador = (e.moradores && e.moradores.nome) || e.nome_avulso || '';
+        var localTxt = e.bloco ? ('Bloco ' + e.bloco + ', Apto ' + e.apto) : ('Apto ' + e.apto);
+        if (nomeMorador) localTxt += ' — ' + escHtmlNaoRetirado(nomeMorador);
+        var classeBadge = esperaMs > LIMITE_ATRASO_MS ? 'badge-danger' : (esperaMs > LIMITE_ALERTA_MS ? 'badge-warn' : 'badge-muted');
+        var telefone = (e.moradores && e.moradores.whatsapp) || e.telefone_avulso || '';
+        var link = waLinkLembrete(telefone, nomeMorador, e.remetente, e.codigo);
+        var acaoTd = link
+          ? '<a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="' + link + '">WhatsApp</a>'
+          : '<span class="hint" style="margin:0;">sem telefone</span>';
+        return '<tr><td>' + localTxt + '</td><td>' + malotFormatarData(e.criado_em) + '</td>' +
+          '<td><span class="badge ' + classeBadge + '">' + malotFormatarEspera(esperaMs) + '</span></td>' +
+          '<td>' + acaoTd + '</td></tr>';
+      }).join('');
+    }
+
+    // Comprovante simples em PDF, gerado no próprio navegador (sem precisar
+    // de servidor) — só pra pagamentos já aprovados.
+    function gerarReciboPdf(p){
+      if (!p) return;
+      if (!window.jspdf || !window.jspdf.jsPDF){
+        malotToast('Não foi possível gerar o recibo agora. Tente novamente.', 'erro');
+        return;
+      }
+      var doc = new window.jspdf.jsPDF();
+      var origem = p.origem === 'mercadopago' ? 'Mercado Pago (Pix, crédito ou débito)' : 'Registrado manualmente pela administração';
+      var statusInfo = PAGAMENTO_STATUS_LABEL[p.status] || [p.status, ''];
+
+      doc.setFontSize(16);
+      doc.text('Recibo de pagamento — Malote', 14, 20);
+
+      doc.setFontSize(11);
+      var linhas = [
+        'Condomínio: ' + (nomeCondominioAtual || '—'),
+        'Competência: ' + malotFormatarCompetencia(p.competencia),
+        'Valor pago: ' + malotFormatarCentavos(p.valor_centavos),
+        'Forma de pagamento: ' + origem,
+        'Status: ' + statusInfo[0],
+        'Referência: ' + p.id
+      ];
+      var y = 36;
+      linhas.forEach(function(linha){ doc.text(linha, 14, y); y += 8; });
+
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('Comprovante gerado automaticamente pelo sistema Malote.', 14, y + 6);
+
+      doc.save('recibo-malote-' + String(p.competencia || '').slice(0, 7) + '.pdf');
+    }
+
+    document.getElementById('btn-verificar-liberacao').addEventListener('click', async function(){
+      var btn = this; btn.disabled = true; btn.textContent = 'Verificando...';
+      try { await carregar(); }
+      finally { btn.disabled = false; btn.textContent = 'Já paguei, verificar liberação'; }
+    });
+
+    // Compartilhado pelo botão "Pagar agora" (acima) e pelo botão "Pagar" de
+    // cada parcela pendente na tabela de Pagamentos — mesmo fluxo de
+    // checkout do Mercado Pago nos dois lugares.
+    async function iniciarPagamentoCartao(btn){
+      var textoOriginal = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Abrindo pagamento...';
+      try {
+        var resp = await malote.functions.invoke('mp-criar-pagamento', {
+          body: { origem: window.location.origin }
+        });
+        if (resp.error){
+          var msg = 'Não foi possível iniciar o pagamento. Tente novamente em instantes.';
+          try {
+            if (resp.error.context && typeof resp.error.context.json === 'function'){
+              var corpo = await resp.error.context.json();
+              if (corpo && corpo.error) msg = corpo.error;
+            }
+          } catch (e2) { /* usa a mensagem padrão */ }
+          malotToast(msg, 'erro');
+          btn.disabled = false; btn.textContent = textoOriginal;
+          return;
+        }
+        if (resp.data && resp.data.url){
+          window.location.href = resp.data.url;
+        } else {
+          malotToast('Não foi possível iniciar o pagamento. Tente novamente em instantes.', 'erro');
+          btn.disabled = false; btn.textContent = textoOriginal;
+        }
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+        btn.disabled = false; btn.textContent = textoOriginal;
+      }
+    }
+    document.getElementById('btn-pagar-cartao').addEventListener('click', function(){ iniciarPagamentoCartao(this); });
+
+    document.getElementById('f-editar-apartamentos').addEventListener('input', atualizarHintValorEditar);
+
+    document.getElementById('f-editar-cep').addEventListener('blur', async function(){
+      var cep = this.value.replace(/\D/g, '');
+      if (cep.length !== 8) return;
+      this.value = cep.replace(/(\d{5})(\d{3})/, '$1-$2');
+      try {
+        var resp = await fetch('https://viacep.com.br/ws/' + cep + '/json/');
+        var dados = await resp.json();
+        if (!dados.erro){
+          if (!document.getElementById('f-editar-endereco').value.trim()) document.getElementById('f-editar-endereco').value = dados.logradouro || '';
+          if (!document.getElementById('f-editar-bairro').value.trim()) document.getElementById('f-editar-bairro').value = dados.bairro || '';
+          if (!document.getElementById('f-editar-cidade').value.trim()) document.getElementById('f-editar-cidade').value = dados.localidade || '';
+          if (dados.uf) document.getElementById('f-editar-uf').value = dados.uf;
+        }
+      } catch (e) { /* sem internet ou serviço fora do ar: segue preenchimento manual */ }
+    });
+
+    document.getElementById('btn-salvar-dados').addEventListener('click', async function(){
+      var blocos = parseInt(document.getElementById('f-editar-blocos').value, 10);
+      var apartamentos = parseInt(document.getElementById('f-editar-apartamentos').value, 10);
+      if (isNaN(blocos) || blocos < 1) blocos = 1;
+      if (isNaN(apartamentos) || apartamentos < 1){ malotToast('Digite a quantidade de apartamentos.', 'erro'); return; }
+      var endereco = {
+        cep: document.getElementById('f-editar-cep').value.trim(),
+        endereco: document.getElementById('f-editar-endereco').value.trim(),
+        numero: document.getElementById('f-editar-numero').value.trim(),
+        bairro: document.getElementById('f-editar-bairro').value.trim(),
+        cidade: document.getElementById('f-editar-cidade').value.trim(),
+        uf: document.getElementById('f-editar-uf').value
+      };
+      var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+      try {
+        var novoFotoPath = condominioFotoPath;
+        if (perfilFotoDataUrl){
+          // apaga a foto antiga antes de subir a nova, pra não deixar lixo no storage
+          if (condominioFotoPath) await malote.storage.from('perfil-fotos').remove([condominioFotoPath]).catch(function(){});
+          var caminhoFoto = meuCondominioId + '/perfil-' + Date.now() + '.jpg';
+          var up = await malote.storage.from('perfil-fotos').upload(caminhoFoto, malotDataUrlParaBlob(perfilFotoDataUrl), { contentType: 'image/jpeg', upsert: true });
+          if (up.error) throw up.error;
+          novoFotoPath = caminhoFoto;
+        } else if (perfilFotoRemovida && condominioFotoPath){
+          await malote.storage.from('perfil-fotos').remove([condominioFotoPath]).catch(function(){});
+          novoFotoPath = null;
+        }
+
+        var upd = await malote.from('condominios').update({
+          qtd_blocos: blocos, qtd_apartamentos: apartamentos,
+          cep: endereco.cep || null, endereco: endereco.endereco || null, numero: endereco.numero || null,
+          bairro: endereco.bairro || null, cidade: endereco.cidade || null, uf: endereco.uf || null,
+          foto_perfil_path: novoFotoPath
+        }).eq('user_id', sessaoAtual.user.id);
+        if (upd.error) throw upd.error;
+        malotToast('Dados atualizados!', 'ok');
+        await carregar();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Salvar alterações';
+      }
+    });
+
+    function atualizarHintValorOnboarding(){
+      var apartamentos = parseInt(document.getElementById('f-apartamentos').value, 10);
+      var el = document.getElementById('onboarding-valor-hint');
+      if (isNaN(apartamentos) || apartamentos < 1){
+        el.innerHTML = 'Mensalidade: <strong>R$ 59,90/mês</strong> (até 60 apartamentos).';
+        return;
+      }
+      var valor = malotCalcularMensalidade(apartamentos);
+      if (apartamentos > 60){
+        el.innerHTML = 'Mensalidade estimada: <strong>' + malotFormatarReais(valor) + '/mês</strong> (60 inclusos + ' + (apartamentos - 60) + ' apto(s) a R$ 0,99 cada).';
+      } else {
+        el.innerHTML = 'Mensalidade estimada: <strong>' + malotFormatarReais(valor) + '/mês</strong> (até 60 apartamentos).';
+      }
+    }
+    document.getElementById('f-apartamentos').addEventListener('input', atualizarHintValorOnboarding);
+
+    // Mesmo autofill de endereço por CEP do cadastro.html — só preenche o
+    // que ainda estiver vazio, nunca sobrescreve o que a pessoa já digitou.
+    document.getElementById('f-cep').addEventListener('blur', async function(){
+      var cep = this.value.replace(/\D/g, '');
+      if (cep.length !== 8) return;
+      this.value = cep.replace(/(\d{5})(\d{3})/, '$1-$2');
+      try {
+        var resp = await fetch('https://viacep.com.br/ws/' + cep + '/json/');
+        var dados = await resp.json();
+        if (!dados.erro){
+          if (!document.getElementById('f-endereco').value.trim()) document.getElementById('f-endereco').value = dados.logradouro || '';
+          if (!document.getElementById('f-bairro').value.trim()) document.getElementById('f-bairro').value = dados.bairro || '';
+          if (!document.getElementById('f-cidade').value.trim()) document.getElementById('f-cidade').value = dados.localidade || '';
+          if (dados.uf) document.getElementById('f-uf').value = dados.uf;
+        }
+      } catch (e) { /* sem internet ou serviço fora do ar: segue preenchimento manual */ }
+    });
+
+    document.getElementById('btn-finalizar').addEventListener('click', async function(){
+      var nome = document.getElementById('f-nome').value.trim();
+      var blocos = parseInt(document.getElementById('f-blocos').value, 10);
+      var apartamentos = parseInt(document.getElementById('f-apartamentos').value, 10);
+      var endereco = {
+        cep: document.getElementById('f-cep').value.trim(),
+        endereco: document.getElementById('f-endereco').value.trim(),
+        numero: document.getElementById('f-numero').value.trim(),
+        bairro: document.getElementById('f-bairro').value.trim(),
+        cidade: document.getElementById('f-cidade').value.trim(),
+        uf: document.getElementById('f-uf').value
+      };
+      if (!nome){ malotToast('Digite o nome do condomínio.', 'erro'); return; }
+      if (isNaN(blocos) || blocos < 1) blocos = 1;
+      if (isNaN(apartamentos) || apartamentos < 1){ malotToast('Digite a quantidade de apartamentos.', 'erro'); return; }
+      if (!endereco.cep || !endereco.endereco || !endereco.numero || !endereco.cidade || !endereco.uf){
+        malotToast('Preencha o endereço completo (CEP, endereço, número, cidade e UF).', 'erro'); return;
+      }
+      var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+      try {
+        await finalizarOnboarding(nome, blocos, apartamentos, endereco);
+        try {
+          localStorage.removeItem('malote_nome_condominio_pendente');
+          localStorage.removeItem('malote_blocos_condominio_pendente');
+          localStorage.removeItem('malote_apartamentos_condominio_pendente');
+          localStorage.removeItem('malote_endereco_condominio_pendente');
+          localStorage.removeItem('malote_condominio_selecionado_pendente');
+        } catch(e){}
+        document.getElementById('passo-onboarding').style.display = 'none';
+        malotToast('Cadastro concluído!', 'ok');
+        carregar();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+        btn.disabled = false; btn.textContent = 'Concluir cadastro';
+      }
+    });
+
+    async function tratarRetornoPagamento(){
+      var params = new URLSearchParams(window.location.search);
+      var status = params.get('pagamento');
+      if (!status) return;
+      history.replaceState(null, '', window.location.pathname);
+
+      if (status === 'sucesso'){
+        malotToast('Pagamento aprovado! Confirmando liberação...', 'ok');
+        for (var i = 0; i < 4; i++){
+          await new Promise(function(res){ setTimeout(res, 1500); });
+          await carregar();
+          if (sessaoAtual){
+            var atual = await malote.from('condominios').select('bloqueado').eq('user_id', sessaoAtual.user.id).maybeSingle();
+            if (atual.data && !atual.data.bloqueado) break;
+          }
+        }
+      } else if (status === 'pendente'){
+        malotToast('Pagamento em processamento. Assim que for aprovado, o acesso libera automaticamente.', 'ok');
+      } else if (status === 'falha'){
+        malotToast('O pagamento não foi concluído. Você pode tentar novamente.', 'erro');
+      }
+    }
+
+    /* ---------- Portaria / recepção (acesso restrito ao leitor de etiqueta) ---------- */
+    function esc(s){ var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+    var estadoPorteiros = [];
+
+    async function carregarPorteiros(){
+      if (!meuCondominioId) return;
+      var r = await malote.from('porteiros').select('*').eq('condominio_id', meuCondominioId).order('nome');
+      if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+      estadoPorteiros = r.data || [];
+      renderPorteiros();
+    }
+
+    function renderPorteiros(){
+      var tbl = document.getElementById('tbl-portaria');
+      tbl.innerHTML = '';
+      estadoPorteiros.forEach(function(p){
+        tbl.innerHTML += '<tr><td>' + esc(p.nome) + (p.whatsapp ? '<br><span class="hint" style="margin:0;">' + esc(p.whatsapp) + '</span>' : '') + '</td>' +
+          '<td>' + esc(p.cargo || '—') + '</td>' +
+          '<td>' + esc(p.email_login || '—') + '</td>' +
+          '<td>' + (p.ativo ? '<span class="badge badge-ok">ativo</span>' : '<span class="badge badge-muted">desativado</span>') + '</td>' +
+          '<td><button type="button" class="btn btn-outline btn-sm" data-editar-portaria="' + p.id + '">Editar</button> ' +
+          '<button type="button" class="btn btn-outline btn-sm" data-toggle-portaria="' + p.id + '" data-atual="' + (p.ativo ? '1' : '0') + '">' + (p.ativo ? 'Desativar' : 'Reativar') + '</button></td></tr>';
+      });
+      document.getElementById('portaria-vazio').style.display = estadoPorteiros.length ? 'none' : 'block';
+      tbl.querySelectorAll('[data-toggle-portaria]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var novoValor = this.getAttribute('data-atual') !== '1';
+          var r = await malote.from('porteiros').update({ ativo: novoValor }).eq('id', this.getAttribute('data-toggle-portaria'));
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          malotToast(novoValor ? 'Acesso reativado.' : 'Acesso desativado.', 'ok');
+          await carregarPorteiros();
+        });
+      });
+      tbl.querySelectorAll('[data-editar-portaria]').forEach(function(btn){
+        btn.addEventListener('click', function(){ entrarEmEdicaoPortaria(this.getAttribute('data-editar-portaria')); });
+      });
+    }
+
+    function limparFormularioPortaria(){
+      document.getElementById('port-editando-id').value = '';
+      document.getElementById('port-form-titulo').textContent = 'Nova portaria / recepção';
+      document.getElementById('btn-add-portaria').textContent = 'Cadastrar portaria';
+      document.getElementById('btn-cancelar-portaria').style.display = 'none';
+      document.getElementById('port-nome').value = '';
+      document.getElementById('port-cargo').value = 'Porteiro(a)';
+      document.getElementById('port-whatsapp').value = '';
+      document.getElementById('port-email').value = '';
+      document.getElementById('port-senha').value = '';
+      document.getElementById('port-acesso-campos').style.display = '';
+    }
+
+    function entrarEmEdicaoPortaria(id){
+      var p = estadoPorteiros.filter(function(x){ return x.id === id; })[0];
+      if (!p) return;
+      document.getElementById('port-editando-id').value = p.id;
+      document.getElementById('port-form-titulo').textContent = 'Editar portaria / recepção';
+      document.getElementById('btn-add-portaria').textContent = 'Salvar alterações';
+      document.getElementById('btn-cancelar-portaria').style.display = '';
+      document.getElementById('port-nome').value = p.nome || '';
+      document.getElementById('port-cargo').value = p.cargo || '';
+      document.getElementById('port-whatsapp').value = p.whatsapp || '';
+      // e-mail/senha de login só existem na criação; pra trocar o login,
+      // desative e cadastre de novo.
+      document.getElementById('port-acesso-campos').style.display = 'none';
+      document.getElementById('port-nome').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    document.getElementById('btn-cancelar-portaria').addEventListener('click', limparFormularioPortaria);
+
+    document.getElementById('btn-add-portaria').addEventListener('click', async function(){
+      var nome = document.getElementById('port-nome').value.trim();
+      var cargo = document.getElementById('port-cargo').value.trim() || 'Porteiro(a)';
+      var whatsapp = document.getElementById('port-whatsapp').value.trim() || null;
+      var editandoId = document.getElementById('port-editando-id').value;
+      if (!nome){ malotToast('Preencha o nome.', 'erro'); return; }
+
+      var btn = this; btn.disabled = true;
+      try {
+        if (editandoId){
+          var r = await malote.from('porteiros').update({ nome: nome, cargo: cargo, whatsapp: whatsapp }).eq('id', editandoId);
+          if (r.error) throw r.error;
+          malotToast('Dados atualizados!', 'ok');
+        } else {
+          var email = document.getElementById('port-email').value.trim();
+          var senha = document.getElementById('port-senha').value;
+          if (!email){ malotToast('Informe o e-mail de login.', 'erro'); btn.disabled = false; return; }
+          if (!senha || senha.length < 6){ malotToast('A senha precisa ter pelo menos 6 caracteres.', 'erro'); btn.disabled = false; return; }
+          var resp = await malote.functions.invoke('porteiro-criar-login', {
+            body: { condominio_id: meuCondominioId, nome: nome, cargo: cargo, whatsapp: whatsapp, email: email, senha: senha }
+          });
+          if (resp.error){
+            var msg = 'Não foi possível cadastrar a portaria.';
+            try {
+              if (resp.error.context && typeof resp.error.context.json === 'function'){
+                var corpo = await resp.error.context.json();
+                if (corpo && corpo.error) msg = corpo.error;
+              }
+            } catch (e2) { /* usa a mensagem padrão */ }
+            malotToast(msg, 'erro');
+            return;
+          }
+          malotToast('Portaria cadastrada! Repasse o e-mail e a senha pra essa pessoa entrar no Malote.', 'ok');
+        }
+        limparFormularioPortaria();
+        await carregarPorteiros();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    carregar().then(tratarRetornoPagamento);
+
+    // se o navegador restaurar esta página do cache (botão "voltar" no
+    // celular, por exemplo) sem recarregar o JS do zero, força um reload —
+    // assim o checkout de porteiro acima roda de novo e ele não fica preso
+    // numa versão antiga da tela renderizada antes de sair daqui.
+    window.addEventListener('pageshow', function(e){
+      if (e.persisted) location.reload();
+    });
+  </script>
+  <div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="/parceiros/assets/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>

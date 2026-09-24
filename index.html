@@ -1,0 +1,2376 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Malote · Leitor de Etiqueta</title>
+<link rel="manifest" href="manifest.json">
+<!-- /favicon.ico no raiz do site é o que o Google (e navegadores antigos)
+     busca por padrão pra mostrar o ícone junto do link nos resultados de
+     busca — o rel="icon" abaixo cobre navegadores modernos, mas o arquivo
+     na raiz é o mais confiável pra rastreadores. -->
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#EF6B2C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Malote">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/7.0.0/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="parceiros/assets/supabase-client.js"></script>
+<!-- importação de moradores: planilha (SheetJS) e PDF (pdf.js, formato de módulo ES —
+     mais recente do pdf.js só existe assim, então expõe em window pra o script
+     principal (não-módulo) usar. Se algum desses CDNs falhar, só a importação
+     em massa fica indisponível — o resto do app (leitura de etiqueta, cadastro
+     manual) continua funcionando normalmente. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module">
+  import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.3.289/pdf.min.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.3.289/pdf.worker.min.mjs';
+  window.pdfjsLib = pdfjsLib;
+</script>
+<style>
+  :root{
+    --canvas:#E9EFFA; --paper:#FFFFFF; --paper-2:#F3F6FC;
+    --ink:#0E1B33; --ink-muted:#5B6B85; --border:rgba(14,27,51,0.10);
+    --accent:#EF6B2C; --accent-ink:#FFFFFF;
+    --status-waiting:#D8571E; --status-waiting-bg:#FCE6D8;
+    --status-notified:#3E7FC4; --status-notified-bg:#E9F1FA;
+    --status-picked:#3FA968; --status-picked-bg:#E7F5EC;
+    --danger:#D64545; --danger-bg:#FBE4E1;
+    --texture-dot:rgba(14,27,51,0.06);
+    --shadow:0 1px 2px rgba(14,27,51,.08), 0 10px 22px -14px rgba(14,27,51,.35);
+    --credit-bg:#0E1B33;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --canvas:#0E1B33; --paper:#152645; --paper-2:#1B2E52;
+      --ink:#F4F7FD; --ink-muted:#AFBBD6; --border:rgba(244,247,253,.14);
+      --accent:#EF6B2C; --accent-ink:#FFFFFF;
+      --status-waiting:#F0935E; --status-waiting-bg:#3A2418;
+      --status-notified:#8FBBEE; --status-notified-bg:#1B2E52;
+      --status-picked:#6FCB93; --status-picked-bg:#1C3326;
+      --danger:#E68078; --danger-bg:#3A1F1C;
+      --texture-dot:rgba(244,247,253,0.06);
+      --shadow:0 1px 2px rgba(0,0,0,.35), 0 14px 26px -14px rgba(0,0,0,.55);
+      --credit-bg:#2A3E63;
+    }
+  }
+  :root[data-theme="dark"]{
+    --canvas:#0E1B33; --paper:#152645; --paper-2:#1B2E52;
+    --ink:#F4F7FD; --ink-muted:#AFBBD6; --border:rgba(244,247,253,.14);
+    --accent:#EF6B2C; --accent-ink:#FFFFFF;
+    --credit-bg:#2A3E63;
+    --status-waiting:#F0935E; --status-waiting-bg:#3A2418;
+    --status-notified:#8FBBEE; --status-notified-bg:#1B2E52;
+    --status-picked:#6FCB93; --status-picked-bg:#1C3326;
+    --danger:#E68078; --danger-bg:#3A1F1C;
+    --texture-dot:rgba(244,247,253,0.06);
+    --shadow:0 1px 2px rgba(0,0,0,.35), 0 14px 26px -14px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box;}
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important;} }
+  body{
+    margin:0; background-color:var(--canvas); color:var(--ink); position:relative;
+    font-family:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,sans-serif;
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  /* marca d'água do Malote: a mesma logo do ícone do app, bem apagada, atrás
+     de todo o conteúdo — dá uma identidade visual sem competir com os cards. */
+  body::before{
+    content:'';
+    position:fixed; inset:0; z-index:-1;
+    background-image:url('icons/watermark-mark.png');
+    background-repeat:no-repeat;
+    background-position:center center;
+    background-size:min(88vw,88vh);
+    opacity:.10;
+    pointer-events:none;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) body::before{ background-image:url('icons/watermark-mark-dark.png'); }
+  }
+  :root[data-theme="dark"] body::before{ background-image:url('icons/watermark-mark-dark.png'); }
+  h1,h2,h3{ font-family:'Fraunces',ui-serif,Georgia,serif; font-weight:700; text-wrap:balance; margin:0; }
+  .mono{ font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+  #app{ max-width:760px; margin:0 auto; padding:0 16px 64px; }
+  button{ font:inherit; cursor:pointer; }
+  input,select,textarea{ font:inherit; color:inherit; }
+
+  .topbar{
+    position:sticky; top:0; z-index:20; background:var(--canvas);
+    padding:22px 16px 14px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:10px;
+  }
+  .topbar::after{ content:''; position:absolute; left:0; right:0; bottom:-5px; height:1px; background:var(--border); }
+  .mark{ color:var(--accent); display:flex; flex-shrink:0; }
+  .mark img{ width:38px; height:38px; border-radius:10px; display:block; box-shadow:var(--shadow); }
+  /* Iniciais do nome do condomínio/empresa, no lugar da foto de perfil
+     quando a conta ainda não cadastrou uma (ver malotAtualizarLogo). */
+  .mark-iniciais{ width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:var(--accent); color:#fff; font-weight:700; font-size:14px; box-shadow:var(--shadow); flex-shrink:0; }
+  .names{ display:flex; flex-direction:column; gap:1px; }
+  .topbar-link{
+    margin-left:auto; font-size:12px; color:var(--ink-muted); text-decoration:none; background:none;
+    border:1px solid var(--border); padding:7px 12px; border-radius:999px; white-space:nowrap; flex-shrink:0;
+  }
+  /* botão de ir pro painel de gestão: precisa se destacar (é o único jeito
+     de sair do leitor pra administrar a conta), então usa a cor de destaque
+     em vez do outline apagado que os outros links da topbar usam. */
+  #topbar-voltar{
+    background:var(--accent); color:var(--accent-ink); border-color:var(--accent);
+    font-weight:600; box-shadow:var(--shadow);
+  }
+  .topbar-link:hover{ color:var(--ink); border-color:var(--accent); }
+  .word{ font-family:'Fraunces',ui-serif,Georgia,serif; font-weight:800; font-size:20px; letter-spacing:-.01em; line-height:1; }
+  .sub{ color:var(--ink-muted); font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+
+  .notice{
+    max-width:760px; margin:16px auto 0; padding:11px 14px; border-radius:8px;
+    background:var(--paper); border:1px solid var(--border); color:var(--ink-muted);
+    font-size:12.5px; line-height:1.5;
+  }
+
+  .tabs{ display:flex; gap:6px; margin:20px 0 20px; overflow-x:auto; }
+  .tab-btn{
+    background:transparent; border:1px solid var(--border); color:var(--ink-muted);
+    padding:9px 16px; border-radius:999px; font-size:13.5px; font-weight:500; white-space:nowrap;
+  }
+  .tab-btn.active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  .card{ background:var(--paper); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); padding:20px; margin-bottom:16px; }
+  .card h2{ font-size:17px; margin-bottom:14px; }
+  .card h3{ font-size:14px; margin-bottom:10px; }
+
+  .capture-options{ display:flex; gap:12px; flex-wrap:wrap; }
+  .capture-btn{
+    flex:1 1 140px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    border:1.5px dashed var(--border); border-radius:12px; padding:20px 12px; text-align:center;
+    color:var(--ink-muted); cursor:pointer; background:var(--paper-2); transition:border-color .15s,color .15s;
+  }
+  .capture-btn:hover{ border-color:var(--accent); color:var(--ink); }
+  .capture-icon{ display:block; width:26px; height:26px; margin-bottom:2px; }
+  .capture-icon svg{ width:100%; height:100%; display:block; }
+  .capture-label{ font-size:14px; font-weight:600; color:var(--ink); }
+  .capture-sub{ font-size:11.5px; color:var(--ink-muted); }
+  .manual-btn{ width:100%; margin-top:12px; display:flex; align-items:center; justify-content:center; }
+  .drop{
+    border:1.5px dashed var(--border); border-radius:10px; padding:26px 16px; text-align:center;
+    color:var(--ink-muted); font-size:13.5px; cursor:pointer; background:var(--paper-2);
+  }
+  .drop:hover{ border-color:var(--accent); color:var(--ink); }
+  .preview-wrap{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; margin-top:14px; }
+  .preview-wrap img{ max-width:220px; border-radius:8px; border:1px solid var(--border); }
+  .status-line{ font-size:13px; color:var(--ink-muted); display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .spinner{ width:14px; height:14px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent); animation:spin .8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce){ .spinner{ animation:none; } }
+
+  .raw-text{ background:var(--canvas); border:1px solid var(--border); border-radius:7px; padding:10px 12px; font-size:12px; color:var(--ink-muted); white-space:pre-wrap; max-height:110px; overflow-y:auto; margin-top:10px; }
+
+  .suggest{
+    border:1.5px solid var(--status-picked); background:var(--status-picked-bg); border-radius:10px;
+    padding:14px 16px; margin-top:14px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  }
+  .suggest .txt strong{ display:block; font-size:14.5px; }
+  .suggest .txt span{ font-size:12px; color:var(--ink-muted); }
+
+  .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; margin-top:14px; }
+  .form-grid .full{ grid-column:1/-1; }
+  @media (max-width:520px){ .form-grid{ grid-template-columns:1fr; } }
+  .field label{ display:block; font-size:12px; color:var(--ink-muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--canvas); border:1px solid var(--border); border-radius:7px; padding:9px 11px; font-size:14px;
+  }
+  .field textarea{ min-height:56px; resize:vertical; }
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .chip{ border:1px solid var(--border); background:var(--canvas); border-radius:999px; padding:5px 11px; font-size:12px; color:var(--ink-muted); }
+  .chip:hover{ color:var(--ink); border-color:var(--accent); }
+
+  .btn{ display:inline-flex; align-items:center; gap:6px; border-radius:7px; padding:9px 14px; font-size:13.5px; font-weight:600; border:1px solid transparent; }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); }
+  .btn-outline{ background:transparent; border-color:var(--border); color:var(--ink); }
+  .btn-sm{ padding:6px 11px; font-size:12.5px; }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+
+  .confirm-panel{ border:1.5px solid var(--status-picked); background:var(--status-picked-bg); border-radius:12px; padding:18px 20px; margin-bottom:16px; }
+  .msg-preview{ width:100%; background:var(--paper); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:13.5px; margin:10px 0; }
+
+  table.moradores{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  table.moradores th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-muted); padding:0 10px 8px; }
+  table.moradores td{ background:var(--paper); padding:10px; border-top:1px solid var(--border); }
+  .table-wrap{
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+    background:
+      linear-gradient(to right, var(--paper) 30%, rgba(255,255,255,0)) left,
+      linear-gradient(to left, var(--paper) 30%, rgba(255,255,255,0)) right,
+      linear-gradient(to right, rgba(0,0,0,.15), rgba(255,255,255,0)) left,
+      linear-gradient(to left, rgba(0,0,0,.15), rgba(255,255,255,0)) right;
+    background-repeat:no-repeat;
+    background-color:var(--paper);
+    background-size:24px 100%, 24px 100%, 10px 100%, 10px 100%;
+    background-attachment:local, local, scroll, scroll;
+  }
+  .table-wrap table{ min-width:480px; }
+
+  .hist-item{ display:flex; align-items:center; gap:12px; background:var(--paper); border:1px solid var(--border); border-radius:9px; padding:10px 14px; margin-bottom:8px; font-size:13px; flex-wrap:wrap; }
+  .hist-item .hwhen{ margin-left:auto; color:var(--ink-muted); font-size:12px; }
+  .pill{ display:inline-flex; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; }
+  .pill.notified{ background:var(--status-notified-bg); color:var(--status-notified); }
+  .pill.waiting{ background:var(--status-waiting-bg); color:var(--status-waiting); }
+  .pill.picked{ background:var(--status-picked-bg); color:var(--status-picked); }
+  .pill.food{ background:#FCE6D8; color:#D8571E; }
+  .wa-btn{
+    display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
+    width:34px; height:34px; border-radius:50%; background:#25D366; color:#fff;
+    text-decoration:none; transition:filter .15s, transform .1s;
+  }
+  .wa-btn:hover{ filter:brightness(1.06); }
+  .wa-btn:active{ transform:scale(.93); }
+  .wa-btn svg{ width:16px; height:16px; }
+
+  .install-card{ border-color:var(--accent); }
+
+  .stat-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .stat-tile{ flex:1 1 100px; background:var(--paper-2); border:1px solid var(--border); border-radius:10px; padding:14px 12px; text-align:center; }
+  .stat-tile .num{ font-family:'Fraunces',serif; font-size:26px; font-weight:800; color:var(--accent); line-height:1; }
+  .stat-tile .lbl{ font-size:11px; color:var(--ink-muted); text-transform:uppercase; letter-spacing:.04em; margin-top:6px; }
+  .chip.filtro-chip{ cursor:pointer; }
+  .chip.filtro-chip.active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+
+  .pkg-summary{ background:var(--paper-2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:13.5px; }
+  .pkg-summary strong{ display:block; font-size:15px; margin-bottom:2px; }
+  .sig-wrap{ margin-top:14px; }
+  .sig-pad{
+    width:100%; height:220px; display:block; touch-action:none; -webkit-touch-callout:none; user-select:none;
+    background:#fff; border:1.5px dashed var(--border); border-radius:12px; cursor:crosshair;
+  }
+  .sig-hint{ font-size:11.5px; color:var(--ink-muted); margin-top:8px; text-align:center; }
+  .sig-preview{ max-width:260px; width:100%; border:1px solid var(--border); border-radius:8px; background:#fff; margin-top:4px; display:block; }
+
+  .empty{ background:var(--paper); border:1px dashed var(--border); border-radius:10px; padding:28px 18px; text-align:center; color:var(--ink-muted); font-size:13.5px; }
+  .empty b{ display:block; color:var(--ink); margin-bottom:4px; }
+
+  .backup-box textarea{ width:100%; min-height:90px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; background:var(--canvas); border:1px solid var(--border); border-radius:7px; padding:8px 10px; }
+  .hint{ font-size:11.5px; color:var(--ink-muted); margin-top:6px; }
+
+  .toast{
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(8px); opacity:0;
+    background:var(--ink); color:var(--canvas); padding:11px 18px; border-radius:8px; font-size:13.5px;
+    box-shadow:var(--shadow); pointer-events:none; transition:opacity .18s, transform .18s; z-index:50; max-width:90vw; text-align:center;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .cq-credit{
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    width:fit-content; margin:28px auto 22px;
+    background:var(--credit-bg); border:1px solid rgba(255,255,255,.14); border-radius:9px;
+    padding:6px 10px; box-shadow:var(--shadow); opacity:.82; transition:opacity .15s;
+    text-decoration:none;
+  }
+  .cq-credit:hover{ opacity:1; }
+  .cq-credit span{ font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:#AFBBD6; }
+  .cq-credit img{ display:block; height:18px; width:auto; }
+  @media (max-width:480px){ .cq-credit{ padding:5px 8px; } .cq-credit span{ display:none; } .cq-credit img{ height:15px; } }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="mark"><img id="topbar-logo" src="icons/icon-192.png" alt=""></span>
+  <span class="names"><span class="word">Malote</span><span class="sub" id="topbar-sub">leitor de etiqueta (câmera)</span></span>
+  <button type="button" id="topbar-voltar" class="topbar-link" data-action="voltar-painel" style="display:none;">Painel do Administrador</button>
+  <button type="button" id="topbar-sair" class="topbar-link" data-action="sair-leitor" style="display:none;">Sair</button>
+</div>
+<div id="app"></div>
+<div id="toast" class="toast" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var residents = [];
+  var packages = [];
+  var tab = 'ler';
+  var editingResidentId = null;
+  var addingResidentOpen = false;
+  var lastRegisteredId = null;
+  // Guarda o que já foi digitado no formulário de morador (bloco/apto/nome/
+  // whatsapp) enquanto ele ainda está aberto. Precisa disso porque anexar ou
+  // remover a foto do morador chama render(), que reconstrói o formulário do
+  // zero — sem isso, os campos já preenchidos voltavam em branco.
+  var residentFormDraft = null;
+
+  var photoDataUrl = null;
+  // Foto opcional da encomenda em si, anexada só quando o porteiro está no
+  // modo "preencher manualmente, sem foto" (ali não existe photoDataUrl
+  // nenhum vindo da leitura da etiqueta) e mesmo assim quer mandar uma foto
+  // pro morador. Quando tem foto da etiqueta (fluxo com câmera/OCR), essa
+  // já vira a foto da encomenda automaticamente — não precisa desta aqui.
+  var pkgFotoManualDataUrl = null;
+  // Mesma lógica do rascunho do morador: guarda o que já foi digitado no
+  // formulário de "Confirme os dados" (remetente, observação, tipo de
+  // entrega, campos manuais) antes de qualquer ação que force um render()
+  // no meio do preenchimento (trocar morador, anexar/remover foto opcional).
+  var pkgFormDraft = null;
+  var ocrStatus = null;
+  var ocrBusy = false;
+  var rawText = '';
+  var guess = null;
+  var chosenResidentId = '';
+  var manualMode = false;
+
+  var signingPackageId = null;
+  var expandedSigId = null;
+  var sigCtx = null;
+  var sigDrawing = false;
+  var sigHasStroke = false;
+  var sigLast = null;
+
+  var deferredInstallPrompt = null;
+  var installInfoOpen = null;
+  // Navegador embutido (WhatsApp, Instagram, Facebook, TikTok...): nenhum
+  // deles instala PWA — o botão "Baixar para Android" nunca vai funcionar
+  // ali, porque o Chrome de verdade nem entra em cena. É a causa mais comum
+  // de "cliquei e não aconteceu nada" quando o link chega por WhatsApp (bem
+  // o caso de um porteiro recebendo o link da portaria).
+  var isInAppBrowser = /(FBAN|FBAV|Instagram|; ?wv\)|Line\/|MicroMessenger|TikTok)/i.test(navigator.userAgent || '');
+  var filtroRetirada = 'todas';
+  var qtdBlocos = 1;
+
+  var codigoRetiradaAberto = false;
+  var codigoRetiradaBusy = false;
+  var codigoRetiradaInfo = null;     // { codigo, morador_nome, morador_bloco, morador_apto, qtd_pendentes }
+  var codigoRetiradaErro = null;
+
+  var condominioAtual = null;    // { id, nome, qtdBlocos } — resolvido após login
+  var modoPorteiro = false;      // true quando quem logou é porteiro/recepção (acesso restrito)
+  var porteiroAtual = null;      // { id, nome, cargo } — só preenchido em modoPorteiro
+  var unidadesPorteiro = [];     // só carregado pra porteiro em empresa: opções do <select> Unidade
+  var setoresPorteiro = [];      // idem, opções do <select> Setor (filtradas pela unidade escolhida)
+  var addingColabPorteiroOpen = false;
+  var colabPorteiroDraft = null; // { nome, whatsapp, unidadeId, setorId }
+  var savingColabPorteiro = false;
+  var carregandoDados = true;
+  var erroConexaoInicial = false;
+  var modoOffline = false;
+  var realtimeChannel = null;
+  var savingMorador = false;
+  var savingPacote = false;
+  var savingRetirada = false;
+  var deletingResidentIds = {};
+
+  var residentFotoDataUrl = null;    // dataURL da nova foto escolhida (ainda não enviada)
+  var residentFotoRemovida = false;  // usuário pediu para remover a foto já salva
+  var residentFotoSignedUrl = null;  // URL assinada da foto já salva (ao editar)
+  var importAberto = null;           // 'planilha' | 'pdf' | 'foto' | null
+  var importBusy = false;
+  var importStatus = null;
+  var importPreview = null;          // array de {bloco,apto,nome,whatsapp} em edição
+  var importFotoDataUrl = null;
+
+  var ICON_CAMERA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+  var ICON_GALLERY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
+  var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align:-3px;margin-right:6px;"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>';
+  var ICON_WHATSAPP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"></path></svg>';
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+  function digits(s){ return String(s || '').replace(/\D/g, ''); }
+  function fmtPhone(s){
+    var d = digits(s);
+    if (d.length <= 2) return d;
+    if (d.length <= 7) return '(' + d.slice(0,2) + ') ' + d.slice(2);
+    return '(' + d.slice(0,2) + ') ' + d.slice(2,7) + '-' + d.slice(7,11);
+  }
+  function genId(){ return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+  function genCode(){ return 'ENC-' + Date.now().toString(36).slice(-5).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase(); }
+  function dataUrlToBlob(dataUrl){
+    var parts = dataUrl.split(',');
+    var mimeMatch = parts[0].match(/:(.*?);/);
+    var mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    var bin = atob(parts[1]);
+    var arr = new Uint8Array(bin.length);
+    for (var i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function fmtWhen(iso){
+    if (!iso) return '';
+    var d = new Date(iso), now = new Date();
+    var hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+    if (d.toDateString() === now.toDateString()) return 'hoje ' + hh + ':' + mm;
+    return d.toLocaleDateString('pt-BR') + ' ' + hh + ':' + mm;
+  }
+  function startOfDay(d){ var x = new Date(d); x.setHours(0,0,0,0); return x; }
+  function startOfWeek(d){
+    var x = startOfDay(d);
+    var dia = x.getDay(); // 0 = domingo
+    var diff = (dia === 0) ? 6 : dia - 1; // semana comeca na segunda
+    x.setDate(x.getDate() - diff);
+    return x;
+  }
+  function startOfMonth(d){ var x = new Date(d.getFullYear(), d.getMonth(), 1); x.setHours(0,0,0,0); return x; }
+  function limiteDoPeriodo(periodo){
+    var agora = new Date();
+    if (periodo === 'hoje') return startOfDay(agora);
+    if (periodo === 'semana') return startOfWeek(agora);
+    if (periodo === 'mes') return startOfMonth(agora);
+    return null;
+  }
+  function contaEntregas(periodo){
+    var limite = limiteDoPeriodo(periodo);
+    return packages.filter(function(p){
+      if (!p.retiradoEm) return false;
+      if (!limite) return true;
+      return new Date(p.retiradoEm) >= limite;
+    }).length;
+  }
+  function pacotesRetiradosFiltrados(){
+    var limite = limiteDoPeriodo(filtroRetirada);
+    return packages.filter(function(p){
+      if (!p.retiradoEm) return false;
+      if (!limite) return true;
+      return new Date(p.retiradoEm) >= limite;
+    }).sort(function(a,b){ return new Date(b.retiradoEm) - new Date(a.retiradoEm); });
+  }
+  function statTile(label, num){
+    return '<div class="stat-tile"><div class="num">' + num + '</div><div class="lbl">' + esc(label) + '</div></div>';
+  }
+
+  function findResident(id){ for (var i=0;i<residents.length;i++) if (residents[i].id===id) return residents[i]; return null; }
+  function sortedResidents(){
+    return residents.slice().sort(function(a,b){
+      if (a.bloco !== b.bloco) return a.bloco.localeCompare(b.bloco,'pt-BR',{numeric:true});
+      return a.apto.localeCompare(b.apto,'pt-BR',{numeric:true});
+    });
+  }
+  function normKey(s){ return String(s||'').trim().toUpperCase(); }
+  function temBlocos(){ return qtdBlocos > 1; }
+  function modoEmpresarial(){ return !!(condominioAtual && condominioAtual.tipoOperacao === 'empresarial'); }
+  function localHtml(bloco, apto){
+    if (modoEmpresarial()){
+      return (bloco ? esc(bloco) + ' / ' : '') + (apto ? esc(apto) : 'Setor não informado');
+    }
+    return (bloco ? 'Bl. ' + esc(bloco) + ' / ' : '') + 'Apto ' + esc(apto);
+  }
+
+  var STORAGE_KEY = 'malote_leitor_dados_v1';
+  function saveState(){
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ residents: residents, packages: packages, qtdBlocos: qtdBlocos, condominio: condominioAtual }));
+      saveState._falhouAntes = false;
+    } catch (e) {
+      // Modo privado, localStorage desligado, ou espaço do navegador cheio.
+      // Não trava o app — só avisa uma vez por sessão.
+      if (!saveState._falhouAntes){
+        saveState._falhouAntes = true;
+        showToast('Não consegui salvar automaticamente neste navegador. Use "Gerar backup" pra não perder os dados.');
+      }
+    }
+  }
+  function loadState(){
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      var data = JSON.parse(raw);
+      if (Array.isArray(data.residents)) residents = data.residents;
+      if (Array.isArray(data.packages)) packages = data.packages;
+      if (typeof data.qtdBlocos === 'number' && data.qtdBlocos >= 1) qtdBlocos = data.qtdBlocos;
+      if (data.condominio && data.condominio.id) condominioAtual = data.condominio;
+    } catch (e) { /* nada salvo ainda, ou dado corrompido — comeca vazio */ }
+  }
+
+  function showToast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(showToast._h);
+    showToast._h = setTimeout(function(){ t.classList.remove('show'); }, 3200);
+  }
+
+  /* ---------- OCR guess ---------- */
+  function matchFirst(text, patterns){
+    for (var i=0;i<patterns.length;i++){
+      var m = text.match(patterns[i]);
+      if (m && m[1]) return m[1];
+    }
+    return null;
+  }
+  function guessFromText(text){
+    var norm = text.toUpperCase();
+    var bloco = matchFirst(norm, [/BLOCO\.?\s*[:\-]?\s*([A-Z0-9]{1,20})/, /\bBL\.?\s*[:\-]?\s*([A-Z0-9]{1,20})\b/, /TORRE\.?\s*[:\-]?\s*([A-Z0-9]{1,20})/]);
+    var apto = matchFirst(norm, [/APTO?\.?\s*[:\-]?\s*([A-Z0-9]{1,5})/, /\bAP\.?\s*[:\-]?\s*([A-Z0-9]{1,5})\b/, /UNID(?:ADE)?\.?\s*[:\-]?\s*([A-Z0-9]{1,5})/]);
+    var residentMatch = null;
+    if (bloco && apto){
+      residentMatch = residents.filter(function(r){ return normKey(r.bloco)===normKey(bloco) && normKey(r.apto)===normKey(apto); })[0] || null;
+    }
+    if (!residentMatch){
+      residentMatch = residents.filter(function(r){
+        var parts = r.nome.toUpperCase().split(/\s+/).filter(function(w){ return w.length > 2; });
+        return parts.some(function(w){ return norm.indexOf(w) !== -1; });
+      })[0] || null;
+    }
+    return { bloco: bloco, apto: apto, residentMatch: residentMatch };
+  }
+
+  async function runOcr(dataUrl){
+    ocrBusy = true; ocrStatus = 'iniciando leitor...'; render();
+    try {
+      var worker = await Tesseract.createWorker('por', 1, {
+        logger: function(m){
+          if (m.status){
+            ocrStatus = m.status + (typeof m.progress === 'number' ? ' — ' + Math.round(m.progress*100) + '%' : '');
+            render();
+          }
+        }
+      });
+      var result = await worker.recognize(dataUrl);
+      rawText = (result && result.data && result.data.text) || '';
+      guess = guessFromText(rawText);
+      chosenResidentId = guess.residentMatch ? guess.residentMatch.id : '';
+      manualMode = !guess.residentMatch;
+      await worker.terminate();
+      ocrStatus = null;
+    } catch (err){
+      ocrStatus = null;
+      showToast('Nao foi possivel ler a etiqueta automaticamente (sem internet para baixar o leitor?). Preencha manualmente.');
+      manualMode = true;
+    }
+    ocrBusy = false;
+    render();
+  }
+
+  function buildMessage(pkg){
+    var resident = pkg.residentId ? findResident(pkg.residentId) : null;
+    var nomeCompleto = resident ? resident.nome : pkg.nomeAvulso;
+    var primeiroNome = (nomeCompleto || '').trim().split(' ')[0] || (modoEmpresarial() ? 'colega' : 'morador(a)');
+    var msg;
+    if (modoEmpresarial()){
+      // No modelo empresarial o colaborador já sabe onde trabalha — Bloco e
+      // Apto são termos de condomínio e não fazem sentido aqui (e nem
+      // "unidade"/"setor": é informação redundante pra quem recebe). A
+      // mensagem fica só com o essencial: nome, o que chegou e o código.
+      if (pkg.appEntrega){
+        msg = 'Ola, ' + primeiroNome + '! Chegou seu pedido do ' + pkg.appEntrega;
+        if (pkg.remetente) msg += ' - ' + pkg.remetente;
+        msg += '. Por favor, retire antes que esfrie!';
+      } else {
+        msg = 'Ola, ' + primeiroNome + '! Chegou uma encomenda para voce';
+        if (pkg.remetente) msg += ' - ' + pkg.remetente;
+        msg += '. Por favor, retire quando puder.';
+      }
+    } else {
+      var bloco = resident ? resident.bloco : pkg.bloco;
+      var apto = resident ? resident.apto : pkg.apto;
+      var localTxt = bloco ? ('Bloco ' + bloco + ', Apto ' + apto) : ('Apto ' + apto);
+      if (pkg.appEntrega){
+        // Comida (iFood/Rappi/etc): mensagem diferente, com o nome do app e
+        // um empurrãozinho pra descer logo — igual já faz o push, só que
+        // aqui no WhatsApp, que é o canal que o porteiro mais usa.
+        msg = 'Ola, ' + primeiroNome + '! Chegou seu pedido do ' + pkg.appEntrega + ' na portaria (' + localTxt + ')';
+        if (pkg.remetente) msg += ' - ' + pkg.remetente;
+        msg += '. Pode descer pra pegar antes que esfrie!';
+      } else {
+        msg = 'Ola, ' + primeiroNome + '! Chegou uma encomenda para voce na portaria (' + localTxt + ')';
+        if (pkg.remetente) msg += ' - ' + pkg.remetente;
+        msg += '. Pode retirar quando for possivel.';
+      }
+    }
+    if (pkg.observacao) msg += ' Obs: ' + pkg.observacao + '.';
+    msg += ' Codigo: ' + pkg.codigo + '.';
+    return msg;
+  }
+  function waLink(phone, message){
+    var d = digits(phone);
+    if (d.length > 0 && d.length <= 11) d = '55' + d;
+    return 'https://wa.me/' + d + '?text=' + encodeURIComponent(message);
+  }
+  function phoneFor(pkg){
+    var resident = pkg.residentId ? findResident(pkg.residentId) : null;
+    return resident ? resident.whatsapp : pkg.telefoneAvulso;
+  }
+
+  /* ---------- render ---------- */
+  function render(){
+    var el = document.getElementById('app');
+    el.innerHTML = renderApp();
+    setupSigCanvas();
+    if (!ocrBusy && !carregandoDados && !erroConexaoInicial) saveState();
+  }
+
+  function setupSigCanvas(){
+    var c = document.getElementById('sig-canvas');
+    if (!c){ sigCtx = null; sigDrawing = false; sigLast = null; return; }
+    var rect = c.getBoundingClientRect();
+    var ratio = window.devicePixelRatio || 1;
+    var cssW = rect.width || 300, cssH = rect.height || 220;
+    c.width = Math.round(cssW * ratio);
+    c.height = Math.round(cssH * ratio);
+    var ctx = c.getContext('2d');
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1a1a1a';
+    sigCtx = ctx;
+    sigHasStroke = false;
+    sigDrawing = false;
+    sigLast = null;
+  }
+
+  function sigPointFromEvent(e){
+    var c = document.getElementById('sig-canvas');
+    var rect = c.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function renderInstalar(){
+    var isStandalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    if (isStandalone) return '';
+    var html = '<div class="card install-card">';
+    html += '<h2 style="margin-bottom:6px;">Instalar no celular</h2>';
+    if (isInAppBrowser){
+      // Aviso logo de cara, antes dos botões: clicar aqui dentro de um
+      // navegador embutido nunca vai instalar nada, então avisar depois (só
+      // no fallback do botão) daria a impressão de bug em vez de explicar a
+      // causa real.
+      html += '<div class="hint" style="margin:0 0 12px;padding:10px 12px;border-radius:8px;background:var(--warn-bg,#FFF6E5);border:1px solid var(--warn,#D98A1B);color:inherit;">⚠️ Parece que esta página abriu dentro do WhatsApp, Instagram ou outro app parecido — nesse navegador embutido a instalação <b>não funciona</b>, mesmo clicando no botão abaixo. Toque no menu <b>⋮</b> no canto e escolha <b>"Abrir no navegador"</b> (ou "Abrir no Chrome") pra abrir este link no Chrome de verdade, e só então instalar.</div>';
+    }
+    html += '<div class="actions" style="margin-top:0;">';
+    html += '<button type="button" class="btn btn-outline btn-sm" data-action="instalar-android">Baixar para Android</button>';
+    html += '<button type="button" class="btn btn-outline btn-sm" data-action="instalar-ios">Baixar para iPhone / iPad</button>';
+    html += '</div>';
+    if (installInfoOpen === 'android'){
+      html += '<div class="hint" style="margin-top:10px;">Se não abriu direto: no Chrome do Android, toque no menu <b>⋮</b> (canto superior direito) e depois em <b>"Instalar aplicativo"</b> ou <b>"Adicionar à tela inicial"</b>. Se essa opção não aparecer no menu, o Chrome ainda não liberou a instalação deste aparelho — navegue um pouco mais pelo site e tente de novo em alguns minutos.</div>';
+    }
+    if (installInfoOpen === 'ios'){
+      html += '<div class="hint" style="margin-top:10px;">No Safari do iPhone/iPad: toque no ícone de compartilhar (o quadrado com uma seta pra cima, na barra de baixo), depois em <b>"Adicionar à Tela de Início"</b> e confirme em <b>"Adicionar"</b>. (Só funciona no Safari — no Chrome do iPhone essa opção não aparece.)</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderCarregando(){
+    if (erroConexaoInicial){
+      return '<div class="card" style="text-align:center;padding:44px 20px;"><div style="color:var(--ink-muted);font-size:13.5px;">Não consegui conectar à internet neste primeiro acesso deste aparelho. Verifique sua conexão e recarregue a página.</div></div>';
+    }
+    return '<div class="card" style="text-align:center;padding:44px 20px;"><span class="spinner"></span><div style="margin-top:10px;color:var(--ink-muted);font-size:13.5px;">Carregando os dados do condomínio...</div></div>';
+  }
+
+  function renderBloqueado(){
+    var motivo = condominioAtual.bloqueadoMotivo ? '<p class="hint" style="margin-top:8px;">' + esc(condominioAtual.bloqueadoMotivo) + '</p>' : '';
+    return '<div class="card" style="text-align:center;padding:44px 20px;">' +
+      '<h2>Acesso bloqueado</h2>' +
+      '<p class="hint" style="margin-top:8px;">O acesso deste condomínio ao Malote está temporariamente bloqueado. Entre em contato para regularizar.</p>' +
+      motivo +
+      '</div>' +
+      '<div class="card" style="text-align:center;">' +
+      '<h2 style="margin-bottom:4px;">Pagar agora</h2>' +
+      '<p class="hint">Assinatura do Malote — <strong>R$ 60,00/mês</strong>. Pague com Pix, crédito ou débito pelo Mercado Pago — liberação automática assim que o pagamento for aprovado.</p>' +
+      '<a class="btn btn-primary" href="sindico/painel.html" style="width:100%;margin-top:10px;">Ir para pagamento</a>' +
+      '</div>';
+  }
+
+  function renderApp(){
+    if (carregandoDados) return renderCarregando();
+    if (condominioAtual && condominioAtual.bloqueado) return renderBloqueado();
+    if (signingPackageId) return renderAssinatura();
+    var html = modoOffline ? '<div class="notice"><strong>Sem conexão agora — mostrando a última cópia salva neste aparelho; as alterações não vão sincronizar até a internet voltar.</strong></div>' : '';
+    html += renderInstalar();
+    html += '<div class="tabs">';
+    html += tabBtn('ler','Ler etiqueta');
+    // Porteiro/recepção também vê essa aba — mas com uma versão restrita
+    // (só cadastrar, sem editar/excluir e sem as configurações do
+    // condomínio/empresa); ver renderMoradores().
+    html += tabBtn('moradores', modoEmpresarial() ? 'Colaboradores' : 'Moradores');
+    html += tabBtn('historico', modoPorteiro ? 'Quem retirou' : 'Histórico / Backup');
+    html += '</div>';
+    if (tab === 'ler') html += renderLer();
+    else if (tab === 'moradores') html += renderMoradores();
+    else html += renderHistorico();
+    return html;
+  }
+  function tabBtn(id,label){
+    return '<button type="button" class="tab-btn' + (tab===id?' active':'') + '" data-action="tab" data-tab="' + id + '">' + esc(label) + '</button>';
+  }
+
+  function renderLer(){
+    var html = '';
+    if (lastRegisteredId){
+      var p = packages.filter(function(x){ return x.id === lastRegisteredId; })[0];
+      if (p){
+        html += '<div class="confirm-panel"><h3>' + (p.appEntrega ? 'Pedido registrado' : 'Encomenda registrada') + ' — mensagem pronta</h3>';
+        html += '<div class="msg-preview">' + esc(buildMessage(p)) + '</div>';
+        // Se essa encomenda tem foto (da etiqueta ou a opcional), oferece
+        // compartilhar foto + mensagem juntas pelo compartilhamento nativo do
+        // aparelho — o link direto do WhatsApp (abaixo) só consegue levar
+        // texto, nunca imagem junto, então essa é a única forma de mandar a
+        // foto já dentro da conversa. A diferença: esse aqui abre a folha de
+        // compartilhar do aparelho, então o porteiro escolhe o contato na
+        // hora; o de baixo já abre direto na conversa certa, mas sem foto.
+        var fotoParaCompartilhar = photoDataUrl || pkgFotoManualDataUrl;
+        if (p.fotoPath && fotoParaCompartilhar){
+          html += '<p class="hint" style="margin:0 0 8px;">Tem foto anexada. Pra mandar a foto junto da mensagem, use "Compartilhar foto" — só que aí você escolhe o contato na hora, já que o WhatsApp não deixa abrir direto numa conversa levando uma foto junto.</p>';
+        }
+        html += '<div class="actions">';
+        if (p.fotoPath && fotoParaCompartilhar){
+          html += '<button type="button" class="btn btn-primary" data-action="compartilhar-foto" data-id="' + p.id + '">📷 Compartilhar foto + mensagem</button>';
+        }
+        html += '<a class="btn ' + (p.fotoPath && fotoParaCompartilhar ? 'btn-outline' : 'btn-primary') + '" target="_blank" rel="noopener" href="' + waLink(phoneFor(p), buildMessage(p)) + '" data-action="notify-confirm" data-id="' + p.id + '">Abrir WhatsApp e notificar' + (p.fotoPath && fotoParaCompartilhar ? ' (só texto)' : '') + '</a>';
+        html += '<button type="button" class="btn btn-outline" data-action="new-scan">Ler outra etiqueta</button>';
+        html += '</div></div>';
+        return html;
+      }
+    }
+
+    html += '<div class="card"><h2>1. Registrar encomenda</h2>';
+    if (!photoDataUrl){
+      html += '<div class="capture-options">';
+      html += '<label class="capture-btn">' +
+        '<span class="capture-icon">' + ICON_CAMERA + '</span>' +
+        '<span class="capture-label">Tirar foto</span>' +
+        '<span class="capture-sub">usar a câmera</span>' +
+        '<input type="file" accept="image/*" capture="environment" data-action="photo-input" style="display:none;"></label>';
+      html += '<label class="capture-btn">' +
+        '<span class="capture-icon">' + ICON_GALLERY + '</span>' +
+        '<span class="capture-label">Escolher foto</span>' +
+        '<span class="capture-sub">da galeria</span>' +
+        '<input type="file" accept="image/*" data-action="photo-input" style="display:none;"></label>';
+      html += '</div>';
+      html += '<button type="button" class="btn btn-outline manual-btn" data-action="manual-entry">' + ICON_EDIT + ' Preencher manualmente, sem foto</button>';
+    } else {
+      html += '<div class="preview-wrap"><img src="' + photoDataUrl + '" alt="Foto da etiqueta">';
+      html += '<div>';
+      if (!ocrBusy && !rawText){
+        html += '<button type="button" class="btn btn-primary" data-action="run-ocr">Ler etiqueta</button>';
+      }
+      html += '<div class="actions"><button type="button" class="btn btn-outline btn-sm" data-action="retake-photo">Trocar foto</button></div>';
+      html += '</div></div>';
+      if (ocrBusy) html += '<div class="status-line"><span class="spinner"></span>' + esc(ocrStatus || 'lendo...') + '</div>';
+      if (rawText){
+        html += '<div class="raw-text">' + esc(rawText.trim().slice(0,600) || '(nenhum texto reconhecido)') + '</div>';
+      }
+    }
+    html += '</div>';
+
+    if (rawText || manualMode || chosenResidentId){
+      html += '<div class="card"><h2>2. Confirme os dados</h2>';
+      if (!photoDataUrl){
+        html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="retake-photo">&larr; Cancelar</button></div>';
+      }
+      if (guess && guess.residentMatch && !manualMode){
+        var r = guess.residentMatch;
+        var localSuggest = modoEmpresarial()
+          ? ((r.bloco ? esc(r.bloco) + ', ' : '') + esc(r.apto))
+          : ((r.bloco ? 'Bloco ' + esc(r.bloco) + ', ' : '') + 'Apto ' + esc(r.apto));
+        html += '<div class="suggest"><div class="txt"><strong>Encontramos: ' + localSuggest + ' — ' + esc(r.nome) + '</strong><span>Confira antes de enviar a mensagem.</span></div>';
+        html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="use-manual">Não é esse, digitar manualmente</button></div></div>';
+      } else {
+        var labelSel = modoEmpresarial() ? 'Colaborador' : 'Morador';
+        html += '<div class="field" style="margin-top:0;"><label>' + labelSel + '</label><select data-action="resident-select">';
+        html += '<option value="">' + (modoEmpresarial() ? 'Selecione unidade / setor / nome...' : 'Selecione bloco / apto / nome...') + '</option>';
+        sortedResidents().forEach(function(r){
+          var rotulo = modoEmpresarial()
+            ? (r.bloco ? esc(r.bloco) + ' - ' : '') + esc(r.apto) + ' - ' + esc(r.nome)
+            : (r.bloco ? 'Bloco ' + esc(r.bloco) + ' - ' : '') + 'Apto ' + esc(r.apto) + ' - ' + esc(r.nome);
+          html += '<option value="' + r.id + '"' + (r.id===chosenResidentId?' selected':'') + '>' + rotulo + '</option>';
+        });
+        html += '<option value="__manual__"' + (manualMode && !chosenResidentId ? ' selected' : '') + '>+ ' + labelSel + ' não cadastrado (digitar manualmente)</option>';
+        html += '</select>';
+        if (!residents.length) html += '<div class="hint">' + (modoEmpresarial() ? 'Nenhum colaborador cadastrado ainda. Cadastre no painel da empresa.' : 'Nenhum morador cadastrado ainda nesta versão. Cadastre na aba Moradores.') + '</div>';
+        html += '</div>';
+        if (manualMode && !chosenResidentId){
+          var pd = pkgFormDraft;
+          html += '<div class="form-grid">';
+          // no modo empresarial o campo "Unidade" sempre aparece, mesmo
+          // quando temBlocos() é falso — temBlocos() é um conceito só do
+          // condominial (qtd_blocos > 1), não se aplica a empresa nenhuma;
+          // sem essa checagem extra, uma empresa perdia o campo de Unidade
+          // por completo no cadastro manual sem foto.
+          if (temBlocos() || modoEmpresarial()) html += fieldInput('manBloco', modoEmpresarial()?'Unidade':'Bloco', pd?pd.manBloco:(guess && guess.bloco ? guess.bloco : ''), 'Ex: 2 ou Jasmim');
+          html += fieldInput('manApto', modoEmpresarial()?'Setor':'Apto', pd?pd.manApto:(guess && guess.apto ? guess.apto : ''), 'Ex: 002', (temBlocos() || modoEmpresarial())?'':'full');
+          html += fieldInput('manNome', modoEmpresarial()?'Nome do colaborador':'Nome do morador', pd?pd.manNome:'','Ex: Cleiton','full');
+          html += fieldInput('manTelefone','WhatsApp (com DDD)', pd?pd.manTelefone:'','Ex: 11 98765-4321','full');
+          html += '</div>';
+        }
+      }
+
+      html += '<div class="form-grid">';
+      html += '<div class="field full"><label>Tipo de entrega</label><select id="f-app-entrega">';
+      html += '<option value=""' + (pkgFormDraft && pkgFormDraft.appEntrega ? '' : ' selected') + '>Encomenda (não é comida)</option>';
+      ['iFood','Rappi','Uber Eats','99Food','Outro app de comida'].forEach(function(a){
+        html += '<option value="' + a + '"' + (pkgFormDraft && pkgFormDraft.appEntrega === a ? ' selected' : '') + '>' + a + '</option>';
+      });
+      html += '</select></div>';
+      html += '<div class="field full"><label>Loja / remetente</label><input type="text" id="f-remetente" placeholder="Ex: Mercado Livre" value="' + esc(pkgFormDraft ? pkgFormDraft.remetente : '') + '">';
+      html += '<div class="chips">';
+      ['Mercado Livre','Amazon','Shopee','Correios','Shein','Outro'].forEach(function(c){
+        html += '<button type="button" class="chip" data-action="chip-remetente" data-val="' + c + '">' + c + '</button>';
+      });
+      html += '</div></div>';
+      html += '<div class="field full"><label>Observação (opcional)</label><textarea id="f-obs" placeholder="Ex: caixa grande...">' + esc(pkgFormDraft ? pkgFormDraft.obs : '') + '</textarea></div>';
+      if (!photoDataUrl) html += renderFotoEncomendaOpcional();
+      html += '</div>';
+
+      html += '<div class="actions"><button type="button" class="btn btn-primary" data-action="registrar">Registrar e gerar mensagem</button></div>';
+      html += '</div>';
+    }
+    return html;
+  }
+  function fieldInput(id,label,value,placeholder,cls){
+    return '<div class="field' + (cls?' '+cls:'') + '"><label>' + esc(label) + '</label><input type="text" id="f-' + id + '" value="' + esc(value) + '" placeholder="' + esc(placeholder) + '"></div>';
+  }
+
+  // Lê o que está digitado agora nos campos do formulário de morador, pra
+  // guardar antes de um render() que os reconstruiria em branco (ex: ao
+  // anexar/remover a foto). Se os campos nem existirem ainda (formulário
+  // fechado), não faz nada.
+  function capturarResidentFormDraft(){
+    var elBloco = document.getElementById('f-r-bloco');
+    var elApto = document.getElementById('f-r-apto');
+    var elNome = document.getElementById('f-r-nome');
+    var elWhatsapp = document.getElementById('f-r-whatsapp');
+    if (!elApto && !elNome && !elWhatsapp && !elBloco) return;
+    residentFormDraft = {
+      bloco: elBloco ? elBloco.value : (residentFormDraft?residentFormDraft.bloco:''),
+      apto: elApto ? elApto.value : '',
+      nome: elNome ? elNome.value : '',
+      whatsapp: elWhatsapp ? elWhatsapp.value : ''
+    };
+  }
+
+  // Mesma ideia, só que pro formulário de registrar encomenda ("2. Confirme
+  // os dados"): lê o que já está nos campos antes de um render() no meio do
+  // preenchimento (trocar morador, anexar/remover a foto opcional da
+  // encomenda) — senão perderia remetente, observação etc. já digitados.
+  function capturarPkgFormDraft(){
+    var elRemetente = document.getElementById('f-remetente');
+    var elObs = document.getElementById('f-obs');
+    var elAppEntrega = document.getElementById('f-app-entrega');
+    var elManBloco = document.getElementById('f-manBloco');
+    var elManApto = document.getElementById('f-manApto');
+    var elManNome = document.getElementById('f-manNome');
+    var elManTelefone = document.getElementById('f-manTelefone');
+    if (!elRemetente && !elObs && !elAppEntrega && !elManApto && !elManNome && !elManTelefone) return;
+    pkgFormDraft = {
+      remetente: elRemetente ? elRemetente.value : (pkgFormDraft?pkgFormDraft.remetente:''),
+      obs: elObs ? elObs.value : (pkgFormDraft?pkgFormDraft.obs:''),
+      appEntrega: elAppEntrega ? elAppEntrega.value : (pkgFormDraft?pkgFormDraft.appEntrega:''),
+      manBloco: elManBloco ? elManBloco.value : (pkgFormDraft?pkgFormDraft.manBloco:''),
+      manApto: elManApto ? elManApto.value : (pkgFormDraft?pkgFormDraft.manApto:''),
+      manNome: elManNome ? elManNome.value : (pkgFormDraft?pkgFormDraft.manNome:''),
+      manTelefone: elManTelefone ? elManTelefone.value : (pkgFormDraft?pkgFormDraft.manTelefone:'')
+    };
+  }
+
+  // Mesma ideia de capturarResidentFormDraft(), pro formulário de cadastro
+  // de colaborador do porteiro/recepção — precisa disso porque trocar a
+  // Unidade força um render() (pra recarregar as opções de Setor daquela
+  // unidade), e sem isso o nome/whatsapp já digitados seriam perdidos.
+  function capturarColabPorteiroDraft(){
+    var elNome = document.getElementById('f-colab-nome');
+    var elWhatsapp = document.getElementById('f-colab-whatsapp');
+    var elUnidade = document.getElementById('sel-colab-unidade');
+    var elSetor = document.getElementById('sel-colab-setor');
+    if (!elNome && !elWhatsapp && !elUnidade && !elSetor) return;
+    colabPorteiroDraft = {
+      nome: elNome ? elNome.value : (colabPorteiroDraft?colabPorteiroDraft.nome:''),
+      whatsapp: elWhatsapp ? elWhatsapp.value : (colabPorteiroDraft?colabPorteiroDraft.whatsapp:''),
+      unidadeId: elUnidade ? elUnidade.value : (colabPorteiroDraft?colabPorteiroDraft.unidadeId:''),
+      setorId: elSetor ? elSetor.value : ''
+    };
+  }
+
+  function renderFotoMorador(){
+    var html = '<div class="field full"><label>Foto do morador (opcional)</label>';
+    var mostrarUrl = residentFotoDataUrl || (!residentFotoRemovida ? residentFotoSignedUrl : null);
+    if (mostrarUrl){
+      html += '<div class="preview-wrap"><img src="' + mostrarUrl + '" alt="Foto do morador" style="max-width:120px;">';
+      html += '<div class="actions" style="margin-top:0;">';
+      html += '<button type="button" class="btn btn-outline btn-sm" data-action="remover-foto-morador">Remover foto</button>';
+      html += '</div></div>';
+    } else {
+      html += '<div class="capture-options">';
+      html += '<label class="capture-btn">' +
+        '<span class="capture-icon">' + ICON_CAMERA + '</span>' +
+        '<span class="capture-label">Tirar foto</span>' +
+        '<span class="capture-sub">usar a câmera</span>' +
+        '<input type="file" accept="image/*" capture="environment" data-action="foto-morador-input" style="display:none;"></label>';
+      html += '<label class="capture-btn">' +
+        '<span class="capture-icon">' + ICON_GALLERY + '</span>' +
+        '<span class="capture-label">Escolher foto</span>' +
+        '<span class="capture-sub">da galeria</span>' +
+        '<input type="file" accept="image/*" data-action="foto-morador-input" style="display:none;"></label>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderFotoEncomendaOpcional(){
+    var html = '<div class="field full"><label>Foto da encomenda (opcional)</label>';
+    if (pkgFotoManualDataUrl){
+      html += '<div class="preview-wrap"><img src="' + pkgFotoManualDataUrl + '" alt="Foto da encomenda" style="max-width:160px;">';
+      html += '<div class="actions" style="margin-top:0;">';
+      html += '<button type="button" class="btn btn-outline btn-sm" data-action="remover-foto-encomenda-manual">Remover foto</button>';
+      html += '</div></div>';
+    } else {
+      html += '<div class="capture-options">';
+      html += '<label class="capture-btn">' +
+        '<span class="capture-icon">' + ICON_CAMERA + '</span>' +
+        '<span class="capture-label">Tirar foto</span>' +
+        '<span class="capture-sub">usar a câmera</span>' +
+        '<input type="file" accept="image/*" capture="environment" data-action="foto-encomenda-manual-input" style="display:none;"></label>';
+      html += '<label class="capture-btn">' +
+        '<span class="capture-icon">' + ICON_GALLERY + '</span>' +
+        '<span class="capture-label">Escolher foto</span>' +
+        '<span class="capture-sub">da galeria</span>' +
+        '<input type="file" accept="image/*" data-action="foto-encomenda-manual-input" style="display:none;"></label>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  var CAMPOS_AGREGADOS = {
+    bloco: ['bloco','torre','blk','bl'],
+    apto: ['apto','apartamento','unidade','ap','apt'],
+    nome: ['nome','morador','nome completo','residente'],
+    whatsapp: ['whatsapp','telefone','celular','fone','contato','tel']
+  };
+  function normalizarCabecalho(s){
+    return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+  function detectarColuna(header){
+    var h = normalizarCabecalho(header);
+    for (var campo in CAMPOS_AGREGADOS){
+      if (CAMPOS_AGREGADOS[campo].indexOf(h) !== -1) return campo;
+    }
+    return null;
+  }
+
+  async function parsePlanilha(file){
+    var buf = await file.arrayBuffer();
+    var wb = XLSX.read(buf, { type: 'array' });
+    var sheet = wb.Sheets[wb.SheetNames[0]];
+    var linhas = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (!linhas.length) return [];
+
+    var primeira = linhas[0].map(function(c){ return String(c||'').trim(); });
+    var mapaColunas = primeira.map(detectarColuna);
+    var temCabecalho = mapaColunas.some(function(c){ return c; });
+    var linhasDados = temCabecalho ? linhas.slice(1) : linhas;
+
+    var resultado = [];
+    linhasDados.forEach(function(linha){
+      if (!linha || !linha.length) return;
+      var vazio = linha.every(function(c){ return String(c||'').trim() === ''; });
+      if (vazio) return;
+      var item = { bloco: '', apto: '', nome: '', whatsapp: '' };
+      if (temCabecalho){
+        mapaColunas.forEach(function(campo, i){ if (campo) item[campo] = String(linha[i] || '').trim(); });
+      } else {
+        var vals = linha.map(function(c){ return String(c||'').trim(); });
+        if (vals.length >= 4){ item.bloco = vals[0]; item.apto = vals[1]; item.nome = vals[2]; item.whatsapp = vals[3]; }
+        else if (vals.length === 3){ item.apto = vals[0]; item.nome = vals[1]; item.whatsapp = vals[2]; }
+        else if (vals.length === 2){ item.nome = vals[0]; item.whatsapp = vals[1]; }
+        else { item.nome = vals[0] || ''; }
+      }
+      if (item.whatsapp) item.whatsapp = fmtPhone(digits(item.whatsapp));
+      resultado.push(item);
+    });
+    return resultado;
+  }
+
+  function parseLinhasParaMoradores(texto){
+    var linhas = String(texto || '').split(/\r?\n/).map(function(l){ return l.trim(); }).filter(function(l){ return l.length > 0; });
+    var resultado = [];
+    linhas.forEach(function(linha){
+      var item = { bloco: '', apto: '', nome: '', whatsapp: '' };
+      var restante = linha;
+
+      var mBloco = restante.match(/bloco\.?\s*[:\-]?\s*([A-Za-zÀ-ú0-9]{1,20})/i) || restante.match(/torre\.?\s*[:\-]?\s*([A-Za-zÀ-ú0-9]{1,20})/i);
+      if (mBloco){ item.bloco = mBloco[1]; restante = restante.replace(mBloco[0], ' '); }
+
+      var mApto = restante.match(/apto?\.?\s*[:\-]?\s*([A-Za-z0-9]{1,6})/i) || restante.match(/\bap\.?\s*[:\-]?\s*([A-Za-z0-9]{1,6})\b/i);
+      if (mApto){ item.apto = mApto[1]; restante = restante.replace(mApto[0], ' '); }
+
+      var mTel = restante.match(/(\(?\d{2}\)?\s*\d{4,5}-?\d{4})/);
+      if (mTel){ item.whatsapp = fmtPhone(digits(mTel[1])); restante = restante.replace(mTel[0], ' '); }
+      else {
+        var digitosSoltos = digits(restante);
+        if (digitosSoltos.length >= 10 && digitosSoltos.length <= 13) item.whatsapp = fmtPhone(digitosSoltos);
+      }
+
+      restante = restante.replace(/[,;|]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+      if (!item.apto){
+        var mAptoSolo = restante.match(/^([A-Za-z0-9]{1,6})\s+/);
+        if (mAptoSolo && /\d/.test(mAptoSolo[1]) && restante.length > mAptoSolo[0].length){
+          item.apto = mAptoSolo[1];
+          restante = restante.slice(mAptoSolo[0].length).trim();
+        }
+      }
+      item.nome = restante.trim();
+      if (item.nome || item.apto) resultado.push(item);
+    });
+    return resultado;
+  }
+
+  async function parsePdf(file){
+    var buf = await file.arrayBuffer();
+    var doc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+    var linhasTexto = [];
+    for (var p = 1; p <= doc.numPages; p++){
+      var page = await doc.getPage(p);
+      var content = await page.getTextContent();
+      var linhaAtual = [];
+      var ultimoY = null;
+      content.items.forEach(function(item){
+        var y = item.transform[5];
+        if (ultimoY !== null && Math.abs(y - ultimoY) > 4){
+          linhasTexto.push(linhaAtual.join(' '));
+          linhaAtual = [];
+        }
+        linhaAtual.push(item.str);
+        ultimoY = y;
+      });
+      if (linhaAtual.length) linhasTexto.push(linhaAtual.join(' '));
+    }
+    return parseLinhasParaMoradores(linhasTexto.join('\n'));
+  }
+
+  async function parseFotoLista(dataUrl){
+    var worker = await Tesseract.createWorker('por', 1, {
+      logger: function(m){
+        if (m.status){
+          importStatus = m.status + (typeof m.progress === 'number' ? ' — ' + Math.round(m.progress*100) + '%' : '');
+          render();
+        }
+      }
+    });
+    var result = await worker.recognize(dataUrl);
+    await worker.terminate();
+    var texto = (result && result.data && result.data.text) || '';
+    return parseLinhasParaMoradores(texto);
+  }
+
+  function renderImportCard(){
+    var html = '<div class="card"><h2>Importar moradores em massa</h2>';
+
+    if (!importAberto){
+      html += '<div class="capture-options">';
+      html += '<label class="capture-btn" data-action="import-abrir" data-tipo="planilha"><span class="capture-label">Planilha</span><span class="capture-sub">Excel ou CSV</span></label>';
+      html += '<label class="capture-btn" data-action="import-abrir" data-tipo="pdf"><span class="capture-label">PDF</span><span class="capture-sub">lista em PDF</span></label>';
+      html += '<label class="capture-btn" data-action="import-abrir" data-tipo="foto"><span class="capture-label">Foto da lista</span><span class="capture-sub">câmera ou galeria</span></label>';
+      html += '</div>';
+      return html + '</div>';
+    }
+
+    html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="import-fechar">&larr; Cancelar importação</button></div>';
+
+    if (importAberto === 'planilha' && !importPreview){
+      html += '<label class="drop" style="display:block;margin-top:12px;">Toque para escolher a planilha (.xlsx, .xls ou .csv)<input type="file" accept=".xlsx,.xls,.csv" data-action="import-planilha-input" style="display:none;"></label>';
+    }
+    if (importAberto === 'pdf' && !importPreview){
+      html += '<label class="drop" style="display:block;margin-top:12px;">Toque para escolher o PDF<input type="file" accept="application/pdf" data-action="import-pdf-input" style="display:none;"></label>';
+    }
+    if (importAberto === 'foto' && !importPreview){
+      if (!importFotoDataUrl){
+        html += '<div class="capture-options" style="margin-top:12px;">';
+        html += '<label class="capture-btn"><span class="capture-icon">' + ICON_CAMERA + '</span><span class="capture-label">Tirar foto</span><span class="capture-sub">da lista impressa</span><input type="file" accept="image/*" capture="environment" data-action="import-foto-input" style="display:none;"></label>';
+        html += '<label class="capture-btn"><span class="capture-icon">' + ICON_GALLERY + '</span><span class="capture-label">Escolher foto</span><span class="capture-sub">da galeria</span><input type="file" accept="image/*" data-action="import-foto-input" style="display:none;"></label>';
+        html += '</div>';
+      } else {
+        html += '<div class="preview-wrap"><img src="' + importFotoDataUrl + '" alt="Foto da lista"><div>';
+        if (!importBusy) html += '<button type="button" class="btn btn-primary" data-action="import-foto-ler">Ler lista</button>';
+        html += '<div class="actions"><button type="button" class="btn btn-outline btn-sm" data-action="import-foto-trocar">Trocar foto</button></div>';
+        html += '</div></div>';
+      }
+    }
+
+    if (importBusy) html += '<div class="status-line"><span class="spinner"></span>' + esc(importStatus || 'lendo...') + '</div>';
+
+    if (importPreview){
+      html += '<div class="hint" style="margin-top:12px;">Confira e corrija os dados abaixo antes de salvar. Linhas sem apto e sem nome não serão salvas.</div>';
+      html += '<div class="table-wrap" style="margin-top:8px;"><table class="moradores"><thead><tr><th>Bloco</th><th>Apto</th><th>Nome</th><th>WhatsApp</th><th></th></tr></thead><tbody>';
+      importPreview.forEach(function(linha, idx){
+        html += '<tr>';
+        ['bloco','apto','nome','whatsapp'].forEach(function(campo){
+          html += '<td><input type="text" style="width:100%;min-width:70px;background:var(--canvas);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;" data-import-campo="' + campo + '" data-import-idx="' + idx + '" value="' + esc(linha[campo] || '') + '"></td>';
+        });
+        html += '<td><button type="button" class="btn btn-outline btn-sm" data-action="import-remover-linha" data-idx="' + idx + '">Remover</button></td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      html += '<div class="actions">';
+      html += '<button type="button" class="btn btn-outline btn-sm" data-action="import-add-linha">+ Adicionar linha</button>';
+      html += '<button type="button" class="btn btn-primary" data-action="import-confirmar"' + (importBusy?' disabled':'') + '>Confirmar e cadastrar ' + importPreview.length + ' morador(es)</button>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // No modo empresarial, unidade/setor/colaborador têm FKs de verdade (não
+  // são texto livre como bloco/apto) — em vez de adaptar todo o formulário de
+  // cadastro/edição de morador pra isso, esta aba vira só consulta, com um
+  // link pro painel da empresa (onde o cadastro completo já existe).
+  function renderColaboradoresSomenteLeitura(){
+    var html = '<div class="card"><h2>Colaboradores</h2>';
+    html += '<p class="hint">O cadastro de unidades, setores e colaboradores é feito no painel da empresa.</p>';
+    html += '<a class="btn btn-outline btn-sm" href="/empresa/painel.html" target="_blank" rel="noopener">Abrir painel da empresa</a>';
+    html += '</div>';
+    if (!residents.length){
+      html += '<div class="empty"><b>Nenhum colaborador cadastrado</b>Cadastre unidades, setores e colaboradores no painel da empresa.</div>';
+      return html;
+    }
+    html += '<div class="card"><div class="table-wrap"><table class="moradores"><thead><tr><th>Unidade</th><th>Setor</th><th>Nome</th><th>WhatsApp</th></tr></thead><tbody>';
+    sortedResidents().forEach(function(r){
+      html += '<tr><td class="mono">' + esc(r.bloco) + '</td><td class="mono">' + esc(r.apto) + '</td><td>' + esc(r.nome) + '</td><td class="mono">' + esc(fmtPhone(r.whatsapp)) + '</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
+  // Porteiro/recepção (condomínio): pode cadastrar morador novo, mas não
+  // edita nem exclui os que já existem — isso continua exclusivo do síndico.
+  // Também não mostra a configuração de quantidade de blocos (é ajuste do
+  // condomínio, não do dia a dia da portaria) nem a foto do morador (mantém
+  // o cadastro simples e evita mexer em permissão de upload de foto).
+  function renderCadastroMoradorPorteiro(){
+    var html = '<div class="card"><h2>Moradores</h2>';
+    html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-primary btn-sm" data-action="toggle-add-resident">Adicionar morador</button></div>';
+    if (addingResidentOpen){
+      var draft = residentFormDraft;
+      var valBloco = draft ? draft.bloco : '';
+      var valApto = draft ? draft.apto : '';
+      var valNome = draft ? draft.nome : '';
+      var valWhatsapp = draft ? draft.whatsapp : '';
+      html += '<div class="form-grid">';
+      if (temBlocos()) html += fieldInput('r-bloco','Bloco', valBloco, 'Ex: 2 ou Jasmim');
+      html += fieldInput('r-apto','Apto', valApto, 'Ex: 002', temBlocos()?'':'full');
+      html += fieldInput('r-nome','Nome completo', valNome, 'Ex: Cleiton Queiroz','full');
+      html += fieldInput('r-whatsapp','WhatsApp (com DDD)', valWhatsapp, 'Ex: 11 98765-4321','full');
+      html += '</div>';
+      html += '<div class="actions"><button type="button" class="btn btn-primary" data-action="save-resident">Salvar</button>';
+      html += '<button type="button" class="btn btn-outline" data-action="cancel-resident-form">Cancelar</button></div>';
+    }
+    html += '</div>';
+
+    if (!residents.length){
+      html += '<div class="empty"><b>Nenhum morador cadastrado</b>Use "Adicionar morador" acima.</div>';
+      return html;
+    }
+    html += '<div class="card"><div class="table-wrap"><table class="moradores"><thead><tr>' + (temBlocos()?'<th>Bloco</th>':'') + '<th>Apto</th><th>Nome</th><th>WhatsApp</th></tr></thead><tbody>';
+    sortedResidents().forEach(function(r){
+      html += '<tr>' + (temBlocos()?'<td class="mono">' + esc(r.bloco) + '</td>':'') + '<td class="mono">' + esc(r.apto) + '</td><td>' + esc(r.nome) + '</td><td class="mono">' + esc(fmtPhone(r.whatsapp)) + '</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
+  // Porteiro/recepção (empresa): mesma ideia, mas cadastrando colaborador
+  // (nome + unidade + setor opcional + WhatsApp opcional) em vez de morador
+  // — unidade/setor continuam só sendo criados pelo painel da empresa.
+  function renderCadastroColaboradorPorteiro(){
+    var html = '<div class="card"><h2>Colaboradores</h2>';
+    html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-primary btn-sm" data-action="toggle-add-colab-porteiro">Adicionar colaborador</button></div>';
+    if (addingColabPorteiroOpen){
+      var draft = colabPorteiroDraft || {};
+      var unidadesAtivas = unidadesPorteiro.filter(function(u){ return u.status === 'ativo'; });
+      html += '<div class="form-grid">';
+      html += fieldInput('colab-nome','Nome completo', draft.nome || '', 'Ex: Maria Silva','full');
+      html += fieldInput('colab-whatsapp','WhatsApp (opcional)', draft.whatsapp || '', 'Ex: 11 98765-4321','full');
+      html += '<div class="field"><label>Unidade</label><select id="sel-colab-unidade" data-action="colab-unidade-select">';
+      html += '<option value="">Selecione...</option>';
+      unidadesAtivas.forEach(function(u){
+        html += '<option value="' + u.id + '"' + (draft.unidadeId===u.id?' selected':'') + '>' + esc(u.nome) + '</option>';
+      });
+      html += '</select></div>';
+      var setoresDaUnidade = setoresPorteiro.filter(function(s){ return s.unidade_id === draft.unidadeId && s.status === 'ativo'; });
+      html += '<div class="field"><label>Setor (opcional)</label><select id="sel-colab-setor" data-action="colab-setor-select">';
+      html += '<option value="">Nenhum / não sei</option>';
+      setoresDaUnidade.forEach(function(s){
+        html += '<option value="' + s.id + '"' + (draft.setorId===s.id?' selected':'') + '>' + esc(s.nome) + '</option>';
+      });
+      html += '</select></div>';
+      html += '</div>';
+      html += '<div class="actions"><button type="button" class="btn btn-primary" data-action="save-colab-porteiro">Salvar</button>';
+      html += '<button type="button" class="btn btn-outline" data-action="cancel-colab-porteiro-form">Cancelar</button></div>';
+    }
+    html += '</div>';
+
+    if (!residents.length){
+      html += '<div class="empty"><b>Nenhum colaborador cadastrado</b>Use "Adicionar colaborador" acima.</div>';
+      return html;
+    }
+    html += '<div class="card"><div class="table-wrap"><table class="moradores"><thead><tr><th>Unidade</th><th>Setor</th><th>Nome</th><th>WhatsApp</th></tr></thead><tbody>';
+    sortedResidents().forEach(function(r){
+      html += '<tr><td class="mono">' + esc(r.bloco) + '</td><td class="mono">' + esc(r.apto) + '</td><td>' + esc(r.nome) + '</td><td class="mono">' + esc(fmtPhone(r.whatsapp)) + '</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
+  function renderMoradores(){
+    if (modoPorteiro) return modoEmpresarial() ? renderCadastroColaboradorPorteiro() : renderCadastroMoradorPorteiro();
+    if (modoEmpresarial()) return renderColaboradoresSomenteLeitura();
+    var html = '<div class="card"><h2>Configuração do condomínio</h2>';
+    html += '<div class="field" style="max-width:260px;"><label>Quantos blocos / torres tem?</label><input type="number" min="1" step="1" id="f-qtd-blocos" value="' + qtdBlocos + '"></div>';
+    html += '<p class="hint" style="margin-top:8px;">Se for só 1, o campo "Bloco" some dos cadastros — fica só o Apto. Se for mais de 1, o campo aparece normalmente.</p>';
+    html += '<p class="hint" style="margin-top:4px;">O campo "Bloco" aceita número (Ex: 2) ou nome (Ex: Jasmim, Torre Ipê) — use o jeito que o seu condomínio usa.</p>';
+    html += '</div>';
+
+    html += '<div class="card"><h2>Moradores</h2>';
+    html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-primary btn-sm" data-action="toggle-add-resident">Adicionar morador</button></div>';
+    if (addingResidentOpen || editingResidentId){
+      var editing = editingResidentId ? findResident(editingResidentId) : null;
+      // Se já tem rascunho (usuário digitou algo e depois anexou/removeu a
+      // foto, o que força um re-render), usa o que foi digitado em vez do
+      // valor original — senão perderia tudo que já tinha preenchido.
+      var draft = residentFormDraft;
+      var valBloco = draft ? draft.bloco : (editing?editing.bloco:'');
+      var valApto = draft ? draft.apto : (editing?editing.apto:'');
+      var valNome = draft ? draft.nome : (editing?editing.nome:'');
+      var valWhatsapp = draft ? draft.whatsapp : (editing?fmtPhone(editing.whatsapp):'');
+      html += '<div class="form-grid">';
+      if (temBlocos()) html += fieldInput('r-bloco','Bloco', valBloco, 'Ex: 2 ou Jasmim');
+      html += fieldInput('r-apto','Apto', valApto, 'Ex: 002', temBlocos()?'':'full');
+      html += fieldInput('r-nome','Nome completo', valNome, 'Ex: Cleiton Queiroz','full');
+      html += fieldInput('r-whatsapp','WhatsApp (com DDD)', valWhatsapp, 'Ex: 11 98765-4321','full');
+      html += renderFotoMorador();
+      html += '</div>';
+      html += '<div class="actions"><button type="button" class="btn btn-primary" data-action="save-resident" data-id="' + (editing?editing.id:'') + '">Salvar</button>';
+      html += '<button type="button" class="btn btn-outline" data-action="cancel-resident-form">Cancelar</button></div>';
+    }
+    html += '</div>';
+
+    html += renderImportCard();
+
+    if (!residents.length){
+      html += '<div class="empty"><b>Nenhum morador cadastrado</b>Adicione manualmente, importe uma planilha/PDF/foto acima, ou cole a lista copiada do Malote principal na aba Histórico / Backup.</div>';
+      return html;
+    }
+    html += '<div class="card"><div class="table-wrap"><table class="moradores"><thead><tr>' + (temBlocos()?'<th>Bloco</th>':'') + '<th>Apto</th><th>Nome</th><th>WhatsApp</th><th></th></tr></thead><tbody>';
+    sortedResidents().forEach(function(r){
+      html += '<tr>' + (temBlocos()?'<td class="mono">' + esc(r.bloco) + '</td>':'') + '<td class="mono">' + esc(r.apto) + '</td><td>' + esc(r.nome) + '</td><td class="mono">' + esc(fmtPhone(r.whatsapp)) + '</td>';
+      html += '<td><div class="actions" style="margin-top:0;">';
+      html += '<button type="button" class="btn btn-outline btn-sm" data-action="edit-resident" data-id="' + r.id + '">Editar</button>';
+      html += '<button type="button" class="btn btn-outline btn-sm" data-action="delete-resident" data-id="' + r.id + '">Excluir</button>';
+      html += '</div></td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
+  function renderAssinatura(){
+    var pkg = packages.filter(function(x){ return x.id === signingPackageId; })[0];
+    if (!pkg){ signingPackageId = null; return renderHistorico(); }
+    var resident = pkg.residentId ? findResident(pkg.residentId) : null;
+    var nome = resident ? resident.nome : pkg.nomeAvulso;
+    var bloco = resident ? resident.bloco : pkg.bloco;
+    var apto = resident ? resident.apto : pkg.apto;
+
+    var html = '<div class="card">';
+    html += '<h2>Confirmar retirada</h2>';
+    var localResumo = modoEmpresarial()
+      ? ((bloco ? esc(bloco) + ' · ' : '') + esc(apto))
+      : ((bloco ? 'Bloco ' + esc(bloco) + ' · ' : '') + 'Apto ' + esc(apto));
+    html += '<div class="pkg-summary"><strong>' + esc(nome) + '</strong>' + localResumo + (pkg.remetente ? ' · ' + esc(pkg.remetente) : '') + '<br><span class="hint" style="margin:4px 0 0;">Código ' + esc(pkg.codigo) + '</span></div>';
+
+    html += '<div class="field"><label>Recebido por</label><input type="text" id="f-retirado-por" value="' + esc(nome || '') + '" placeholder="Nome de quem esta retirando"></div>';
+
+    html += '<div class="sig-wrap">';
+    html += '<label style="display:block;font-size:12px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Assinatura (com o dedo ou o mouse)</label>';
+    html += '<canvas id="sig-canvas" class="sig-pad" oncontextmenu="return false"></canvas>';
+    html += '<div class="sig-hint">Peça para o morador (ou quem estiver retirando) assinar na área acima.</div>';
+    html += '</div>';
+
+    html += '<div class="actions">';
+    html += '<button type="button" class="btn btn-outline btn-sm" data-action="limpar-assinatura">Limpar</button>';
+    html += '<button type="button" class="btn btn-outline" data-action="cancelar-assinatura">Cancelar</button>';
+    html += '<button type="button" class="btn btn-primary" data-action="confirmar-retirada" data-id="' + pkg.id + '">Confirmar retirada</button>';
+    html += '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  function renderHistItem(p, retirado){
+    var r = p.residentId ? findResident(p.residentId) : null;
+    var html = '<div class="hist-item">';
+    html += retirado ? '<span class="pill picked">Retirado</span>' : '<span class="pill waiting">Aguardando retirada</span>';
+    if (p.appEntrega) html += '<span class="pill food">🍔 ' + esc(p.appEntrega) + '</span>';
+    html += '<span><strong>' + esc(r?r.nome:p.nomeAvulso) + '</strong> · ' + localHtml(r?r.bloco:p.bloco, r?r.apto:p.apto) + '</span>';
+    if (retirado){
+      html += '<span class="hwhen">retirado ' + fmtWhen(p.retiradoEm) + '</span>';
+      html += '<button type="button" class="btn btn-outline btn-sm" data-action="ver-assinatura" data-id="' + p.id + '">' + (expandedSigId===p.id?'Ocultar assinatura':'Ver assinatura') + '</button>';
+    } else {
+      html += '<span class="hwhen">' + fmtWhen(p.criadoEm) + '</span>';
+      var telNotif = phoneFor(p);
+      if (telNotif){
+        html += '<a class="wa-btn" title="Avisar ' + esc(r?r.nome:p.nomeAvulso) + ' no WhatsApp" target="_blank" rel="noopener" href="' + waLink(telNotif, buildMessage(p)) + '">' + ICON_WHATSAPP + '</a>';
+      }
+      html += '<button type="button" class="btn btn-primary btn-sm" data-action="abrir-retirada" data-id="' + p.id + '">Registrar retirada</button>';
+    }
+    html += '</div>';
+    if (retirado && expandedSigId === p.id){
+      html += '<div class="hist-item" style="display:block;">';
+      html += '<div class="hint" style="margin-bottom:8px;">Recebido por: <strong style="color:var(--ink);">' + esc(p.retiradoPor || '—') + '</strong></div>';
+      if (p.retiradoAssinatura) html += '<img class="sig-preview" src="' + p.retiradoAssinatura + '" alt="Assinatura">';
+      html += '</div>';
+    }
+    return html;
+  }
+
+  function renderBackupBox(){
+    if (modoEmpresarial() || modoPorteiro){
+      // Backup/importação é uma função administrativa — porteiro/recepção só
+      // enxerga o leitor de etiqueta e a lista de quem retirou/não retirou.
+      // O botão "Importar" desta caixa sempre gravou em "moradores" (formato
+      // bloco/apto), que não existe no modelo empresarial — importar aqui
+      // criaria moradores fantasmas dentro de uma empresa, sem nenhum
+      // colaborador de verdade recebendo os dados. Até existir um formato de
+      // backup próprio para colaboradores, a caixa inteira fica escondida
+      // pra empresa (a base ainda é salva na nuvem normalmente, só o
+      // atalho de exportar/importar texto some).
+      return '';
+    }
+    var html = '<div class="card backup-box"><h2>Backup dos dados</h2>';
+    html += '<div class="actions"><button type="button" class="btn btn-outline btn-sm" data-action="gen-backup">Gerar backup (JSON)</button></div>';
+    html += '<textarea id="backup-area" placeholder="Cole aqui um JSON de backup (ou de moradores) para importar..."></textarea>';
+    html += '<div class="actions"><button type="button" class="btn btn-primary btn-sm" data-action="import-backup">Importar deste texto</button></div>';
+    html += '</div>';
+    return html;
+  }
+
+  function renderCodigoRetirada(){
+    var html = '<div class="card">';
+    if (!codigoRetiradaAberto){
+      html += '<h2>Retirada com código</h2>';
+      html += '<div class="actions"><button type="button" class="btn btn-outline" data-action="abrir-codigo-retirada" style="width:100%;">Digitar código</button></div>';
+      html += '</div>';
+      return html;
+    }
+
+    html += '<h2>Retirada com código</h2>';
+    if (!codigoRetiradaInfo){
+      html += '<div class="field full"><label>Código de 6 dígitos</label><input type="text" id="f-codigo-retirada" inputmode="numeric" maxlength="6" placeholder="Ex: 384021"></div>';
+      if (codigoRetiradaErro) html += '<p class="hint" style="color:var(--danger);margin-top:-6px;">' + esc(codigoRetiradaErro) + '</p>';
+      html += '<div class="actions">';
+      html += '<button type="button" class="btn btn-primary" data-action="validar-codigo-retirada"' + (codigoRetiradaBusy ? ' disabled' : '') + '>' + (codigoRetiradaBusy ? 'Verificando...' : 'Verificar código') + '</button>';
+      html += '<button type="button" class="btn btn-outline" data-action="fechar-codigo-retirada">Cancelar</button>';
+      html += '</div>';
+    } else {
+      var info = codigoRetiradaInfo;
+      html += '<p class="hint" style="margin-bottom:4px;">Código válido para:</p>';
+      html += '<p style="margin:0 0 4px;"><strong>' + esc(info.morador_nome) + '</strong>' + (info.morador_bloco ? ' · ' + (modoEmpresarial() ? esc(info.morador_bloco) : 'Bloco ' + esc(info.morador_bloco)) : '') + ' · ' + (modoEmpresarial() ? esc(info.morador_apto) : 'Apto ' + esc(info.morador_apto)) + '</p>';
+      html += '<p class="hint" style="margin-top:0;">' + info.qtd_pendentes + ' encomenda(s) aguardando serão liberadas.</p>';
+      html += '<div class="actions">';
+      html += '<button type="button" class="btn btn-primary" data-action="confirmar-codigo-retirada"' + (codigoRetiradaBusy ? ' disabled' : '') + '>' + (codigoRetiradaBusy ? 'Confirmando...' : 'Confirmar retirada') + '</button>';
+      html += '<button type="button" class="btn btn-outline" data-action="fechar-codigo-retirada">Cancelar</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderHistorico(){
+    if (!packages.length){
+      var vazio = '<div class="card"><h2>Histórico desta versão</h2>';
+      vazio += '<div class="empty"><b>Nada registrado ainda aqui</b>Encomendas notificadas pelo leitor de etiqueta aparecem nesta lista.</div></div>';
+      return vazio + renderBackupBox();
+    }
+
+    var pendentes = packages.filter(function(p){ return !p.retiradoEm; }).sort(function(a,b){ return new Date(b.criadoEm)-new Date(a.criadoEm); });
+    var retirados = pacotesRetiradosFiltrados();
+
+    var html = '<div class="card"><h2>Entregas</h2>';
+    html += '<div class="stat-row">';
+    html += statTile('Hoje', contaEntregas('hoje'));
+    html += statTile('Esta semana', contaEntregas('semana'));
+    html += statTile('Este mês', contaEntregas('mes'));
+    html += '</div>';
+    html += '<div class="chips" style="margin-top:14px;">';
+    [['hoje','Hoje'],['semana','Semana'],['mes','Mês'],['todas','Todas']].forEach(function(f){
+      html += '<button type="button" class="chip filtro-chip' + (filtroRetirada===f[0]?' active':'') + '" data-action="filtro-retirada" data-periodo="' + f[0] + '">' + f[1] + '</button>';
+    });
+    html += '</div></div>';
+
+    html += renderCodigoRetirada();
+
+    html += '<div class="card"><h2>Aguardando retirada' + (pendentes.length ? ' (' + pendentes.length + ')' : '') + '</h2>';
+    if (!pendentes.length){
+      html += '<div class="empty"><b>Nada aguardando</b>Todas as encomendas registradas já foram retiradas.</div>';
+    } else {
+      pendentes.forEach(function(p){ html += renderHistItem(p, false); });
+    }
+    html += '</div>';
+
+    html += '<div class="card"><h2>Retiradas' + (retirados.length ? ' (' + retirados.length + ')' : '') + '</h2>';
+    if (!retirados.length){
+      html += '<div class="empty"><b>Nenhuma retirada nesse período</b>Assim que uma encomenda for retirada e assinada, ela aparece aqui.</div>';
+    } else {
+      retirados.forEach(function(p){ html += renderHistItem(p, true); });
+    }
+    html += '</div>';
+
+    html += renderBackupBox();
+    return html;
+  }
+
+  /* ---------- mapeamento nuvem <-> app ---------- */
+  function moradorFromRow(row){
+    return { id: row.id, bloco: row.bloco || '', apto: row.apto, nome: row.nome, whatsapp: row.whatsapp, fotoPath: row.foto_path || null };
+  }
+  function rowFromMorador(m){
+    return { id: m.id, condominio_id: condominioAtual.id, bloco: m.bloco || '', apto: m.apto, nome: m.nome, whatsapp: m.whatsapp, foto_path: m.fotoPath || null };
+  }
+  // Malote Empresarial: um colaborador (unidade + setor) é carregado no MESMO
+  // array/formato "residents" que um morador (bloco + apto) — quase todo o
+  // resto do app (busca, ordenação, tela de leitura, histórico, assinatura)
+  // já é genérico em cima desse formato e funciona sem mudar mais nada.
+  function colaboradorFromRow(row){
+    return {
+      id: row.id, bloco: (row.unidades && row.unidades.nome) || '', apto: (row.setores && row.setores.nome) || '',
+      nome: row.nome, whatsapp: row.whatsapp, fotoPath: row.foto_path || null
+    };
+  }
+  function encomendaFromRow(row){
+    return {
+      id: row.id, codigo: row.codigo || '', criadoEm: row.criado_em, remetente: row.remetente || '', observacao: row.observacao || '',
+      residentId: row.resident_id || row.colaborador_id || null, bloco: row.bloco || '', apto: row.apto || '',
+      nomeAvulso: row.nome_avulso || '', telefoneAvulso: row.telefone_avulso || '', appEntrega: row.app_entrega || null,
+      retiradoEm: row.retirado_em || null, retiradoPor: row.retirado_por || '', retiradoAssinatura: row.retirado_assinatura || null,
+      fotoPath: row.foto_path || null
+    };
+  }
+  function rowFromEncomenda(p){
+    var row = {
+      id: p.id, condominio_id: condominioAtual.id, bloco: p.bloco || '', apto: p.apto || '',
+      nome_avulso: p.nomeAvulso || '', telefone_avulso: p.telefoneAvulso || '', codigo: p.codigo || '', remetente: p.remetente || '',
+      observacao: p.observacao || '', criado_em: p.criadoEm, app_entrega: p.appEntrega || null,
+      retirado_em: p.retiradoEm || null, retirado_por: p.retiradoPor || null, retirado_assinatura: p.retiradoAssinatura || null,
+      foto_path: p.fotoPath || null
+    };
+    // resident_id tem FK pra "moradores" e colaborador_id tem FK pra
+    // "colaboradores" — nunca podem receber o mesmo id trocado, senão a
+    // constraint rejeita o insert.
+    if (modoEmpresarial()) row.colaborador_id = p.residentId || null;
+    else row.resident_id = p.residentId || null;
+    return row;
+  }
+
+  /* ---------- nuvem: carregar e sincronizar ---------- */
+  function atualizarTopbar(){
+    var sub = document.getElementById('topbar-sub');
+    if (sub && condominioAtual){
+      // Porteiro/recepção vê o próprio nome/cargo aqui, junto do nome do
+      // condomínio/empresa — assim fica claro pra ele (e pra quem olhar o
+      // aparelho) quem está logado no dia a dia, sem precisar abrir mais nada.
+      sub.textContent = condominioAtual.nome + (modoPorteiro && porteiroAtual ? ' · ' + (porteiroAtual.cargo || 'Portaria') + ' ' + porteiroAtual.nome : '');
+    }
+    if (condominioAtual) malotAtualizarLogo('topbar-logo', condominioAtual.nome, condominioAtual.fotoPerfilPath, { imgClass: '', avatarClass: 'mark-iniciais' });
+    var sairBtn = document.getElementById('topbar-sair');
+    if (sairBtn) sairBtn.style.display = 'inline-flex';
+    // O login manda o dono da conta direto pra cá (uso do dia a dia é ler
+    // etiqueta), então o botão "Voltar" pro painel de gestão (síndico ou
+    // empresa) fica sempre visível — sem ele, quem precisa editar dados do
+    // condomínio, unidades/setores/colaboradores ou o plano ficaria "preso"
+    // aqui. Continua funcionando também de quando o painel manda pra cá com
+    // ?tab=... (ex: ".../index.html?tab=moradores").
+    var voltarBtn = document.getElementById('topbar-voltar');
+    if (voltarBtn){
+      // Porteiro/recepção não tem acesso ao painel de gestão — o botão nem
+      // aparece pra essa conta.
+      voltarBtn.style.display = modoPorteiro ? 'none' : 'inline-flex';
+      voltarBtn.textContent = modoEmpresarial() ? 'Painel do Administrador' : 'Painel do Síndico';
+    }
+  }
+
+  async function carregarDados(){
+    try {
+      if (modoEmpresarial()){
+        var rc = await malote.from('colaboradores').select('*, unidades(nome), setores(nome)').eq('condominio_id', condominioAtual.id);
+        if (rc.error) throw rc.error;
+        residents = rc.data.map(colaboradorFromRow);
+      } else {
+        var rm = await malote.from('moradores').select('*').eq('condominio_id', condominioAtual.id);
+        if (rm.error) throw rm.error;
+        residents = rm.data.map(moradorFromRow);
+      }
+      var re = await malote.from('encomendas').select('*').eq('condominio_id', condominioAtual.id);
+      if (re.error) throw re.error;
+      packages = re.data.map(encomendaFromRow);
+      if (modoPorteiro && modoEmpresarial()){
+        // opções pro <select> de Unidade/Setor no cadastro de colaborador do
+        // porteiro — melhor esforço: se falhar, o formulário só fica sem
+        // opções, não trava o resto do leitor.
+        var ru = await malote.from('unidades').select('id, nome, status').eq('condominio_id', condominioAtual.id);
+        if (!ru.error) unidadesPorteiro = ru.data || [];
+        var rs = await malote.from('setores').select('id, unidade_id, nome, status').eq('condominio_id', condominioAtual.id);
+        if (!rs.error) setoresPorteiro = rs.data || [];
+      }
+      modoOffline = false;
+    } catch (e) {
+      // sem internet, ou erro no servidor: usa a última cópia salva neste
+      // aparelho (se houver) e avisa que os dados podem estar desatualizados.
+      loadState();
+      modoOffline = true;
+    }
+    carregandoDados = false;
+    render(); // render() já guarda uma cópia local (saveState) quando não está carregando
+  }
+
+  function ligarRealtime(){
+    if (!condominioAtual || realtimeChannel) return;
+    realtimeChannel = malote.channel('leitor-' + condominioAtual.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: modoEmpresarial() ? 'colaboradores' : 'moradores', filter: 'condominio_id=eq.' + condominioAtual.id }, modoEmpresarial() ? aplicarMudancaColaborador : aplicarMudancaMorador)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'encomendas', filter: 'condominio_id=eq.' + condominioAtual.id }, aplicarMudancaEncomenda)
+      .subscribe();
+  }
+
+  function aplicarMudancaMorador(payload){
+    if (payload.eventType === 'DELETE'){
+      residents = residents.filter(function(r){ return r.id !== payload.old.id; });
+    } else {
+      var m = moradorFromRow(payload.new);
+      var existente = findResident(m.id);
+      if (existente){ existente.bloco = m.bloco; existente.apto = m.apto; existente.nome = m.nome; existente.whatsapp = m.whatsapp; existente.fotoPath = m.fotoPath; }
+      else { residents.push(m); }
+    }
+    render();
+  }
+
+  // O payload do realtime não traz o nome da unidade/setor já unido (isso só
+  // vem no select com join que o carregarDados() faz) — então, pra não
+  // mostrar um colaborador sem unidade/setor até o próximo reload manual,
+  // simplesmente busca tudo de novo quando alguma coisa muda.
+  function aplicarMudancaColaborador(payload){
+    if (payload.eventType === 'DELETE'){
+      residents = residents.filter(function(r){ return r.id !== payload.old.id; });
+      render();
+      return;
+    }
+    carregarDados();
+  }
+
+  function aplicarMudancaEncomenda(payload){
+    if (payload.eventType === 'DELETE'){
+      packages = packages.filter(function(p){ return p.id !== payload.old.id; });
+    } else {
+      var p = encomendaFromRow(payload.new);
+      var idx = -1;
+      for (var i=0;i<packages.length;i++) if (packages[i].id === p.id) { idx = i; break; }
+      if (idx >= 0) packages[idx] = p; else packages.push(p);
+    }
+    render();
+  }
+
+  async function iniciar(){
+    // Quem já tem sessão ativa (o caso do dia a dia: o aparelho da portaria,
+    // já logado) cai direto no leitor, sem nenhuma mudança de comportamento.
+    // Só quem NÃO tem sessão (primeira visita, sem estar logado) vê a
+    // apresentação antes — e só entra no login se clicar em "Acessar o
+    // sistema" ali.
+    var sessao = await malotExigirSessao('sobre.html');
+    if (!sessao) return; // já redirecionou pra apresentação
+
+    var r = await malote.from('condominios').select('id, nome, qtd_blocos, bloqueado, bloqueado_motivo, tipo_operacao, foto_perfil_path').eq('user_id', sessao.user.id).maybeSingle();
+    if (r.error){
+      // erro de rede (ou do servidor) ao buscar o condomínio — NÃO é o
+      // mesmo que "esta conta não tem condomínio". Tenta usar o que já
+      // estava salvo neste aparelho antes de desistir.
+      loadState();
+      if (condominioAtual){
+        modoOffline = true;
+        qtdBlocos = condominioAtual.qtdBlocos || 1;
+        atualizarTopbar();
+        carregandoDados = false;
+        render();
+        return;
+      }
+      carregandoDados = false;
+      erroConexaoInicial = true;
+      render();
+      return;
+    }
+
+    var condRow = r.data;
+    if (!condRow){
+      var claim = await malote.rpc('reivindicar_condominio');
+      if (!claim.error && claim.data && claim.data.id) condRow = claim.data;
+    }
+    if (!condRow){
+      // Não é dono da conta — pode ser um porteiro/recepção cadastrado pelo
+      // síndico/administrador: login próprio, mas acesso restrito (só o
+      // leitor de etiqueta e a lista de quem já retirou/não retirou).
+      var rp = await malote.from('porteiros')
+        .select('id, nome, cargo, condominios(id, nome, qtd_blocos, bloqueado, bloqueado_motivo, tipo_operacao, foto_perfil_path)')
+        .eq('user_id', sessao.user.id).eq('ativo', true).maybeSingle();
+      if (!rp.error && rp.data && rp.data.condominios){
+        modoPorteiro = true;
+        porteiroAtual = { id: rp.data.id, nome: rp.data.nome, cargo: rp.data.cargo };
+        condRow = rp.data.condominios;
+      }
+    }
+    if (!condRow){
+      // conta confirmada mas o condomínio ainda não foi criado (onboarding
+      // pendente) — a tela de conta cuida disso.
+      location.href = 'sindico/painel.html';
+      return;
+    }
+
+    condominioAtual = {
+      id: condRow.id, nome: condRow.nome, qtdBlocos: condRow.qtd_blocos || 1,
+      bloqueado: !!condRow.bloqueado, bloqueadoMotivo: condRow.bloqueado_motivo || '',
+      tipoOperacao: condRow.tipo_operacao || 'condominial',
+      fotoPerfilPath: condRow.foto_perfil_path || null
+    };
+    qtdBlocos = condominioAtual.qtdBlocos;
+    atualizarTopbar();
+
+    if (condominioAtual.bloqueado){
+      carregandoDados = false;
+      render();
+      return; // não carrega nem sincroniza moradores/encomendas enquanto bloqueado
+    }
+
+    await carregarDados();
+    ligarRealtime();
+  }
+
+  /* ---------- mutations ---------- */
+  async function addResident(data){
+    var novo = { id: genId(), bloco: data.bloco.trim(), apto: data.apto.trim(), nome: data.nome.trim(), whatsapp: digits(data.whatsapp), fotoPath: null };
+    savingMorador = true;
+    try {
+      if (residentFotoDataUrl){
+        var caminho = condominioAtual.id + '/' + novo.id + '.jpg';
+        var up = await malote.storage.from('morador-fotos').upload(caminho, dataUrlToBlob(residentFotoDataUrl), { contentType: 'image/jpeg', upsert: true });
+        if (up.error) throw up.error;
+        novo.fotoPath = caminho;
+      }
+      var r = await malote.from('moradores').insert(rowFromMorador(novo));
+      if (r.error) throw r.error;
+      // se o eco em tempo real da própria inserção já chegou antes desta
+      // linha (corrida possível), não duplica.
+      if (!findResident(novo.id)) residents.push(novo);
+    } catch (e) {
+      showToast('Não consegui salvar o morador. ' + malotErroMsg(e));
+    } finally {
+      savingMorador = false;
+    }
+  }
+  // Cadastro de colaborador feito pelo porteiro/recepção — só insere (nunca
+  // edita/exclui; isso continua exclusivo do administrador no painel da
+  // empresa). Sem upload de foto: colaborador nunca teve esse campo no app.
+  async function addColaboradorPorteiro(data){
+    savingColabPorteiro = true;
+    try {
+      var novoId = genId();
+      var row = {
+        id: novoId, condominio_id: condominioAtual.id, unidade_id: data.unidadeId,
+        setor_id: data.setorId || null, nome: data.nome.trim(),
+        whatsapp: data.whatsapp ? digits(data.whatsapp) : null
+      };
+      var r = await malote.from('colaboradores').insert(row);
+      if (r.error) throw r.error;
+      // se o eco em tempo real já chegou antes desta linha, não duplica.
+      if (!findResident(novoId)){
+        var unidadeNome = (unidadesPorteiro.filter(function(u){ return u.id === data.unidadeId; })[0] || {}).nome || '';
+        var setorNome = data.setorId ? ((setoresPorteiro.filter(function(s){ return s.id === data.setorId; })[0] || {}).nome || '') : '';
+        residents.push({ id: novoId, bloco: unidadeNome, apto: setorNome, nome: row.nome, whatsapp: row.whatsapp, fotoPath: null });
+      }
+    } catch (e) {
+      showToast('Não consegui salvar o colaborador. ' + malotErroMsg(e));
+    } finally {
+      savingColabPorteiro = false;
+    }
+  }
+  async function updateResident(id,data){
+    var r0 = findResident(id); if (!r0) return;
+    var atualizado = { bloco: data.bloco.trim(), apto: data.apto.trim(), nome: data.nome.trim(), whatsapp: digits(data.whatsapp) };
+    savingMorador = true;
+    try {
+      var fotoPath = r0.fotoPath || null;
+      if (residentFotoDataUrl){
+        fotoPath = condominioAtual.id + '/' + id + '.jpg';
+        var up = await malote.storage.from('morador-fotos').upload(fotoPath, dataUrlToBlob(residentFotoDataUrl), { contentType: 'image/jpeg', upsert: true });
+        if (up.error) throw up.error;
+      } else if (residentFotoRemovida && r0.fotoPath){
+        await malote.storage.from('morador-fotos').remove([r0.fotoPath]);
+        fotoPath = null;
+      }
+      atualizado.foto_path = fotoPath;
+      var r = await malote.from('moradores').update(atualizado).eq('id', id);
+      if (r.error) throw r.error;
+      r0.bloco = atualizado.bloco; r0.apto = atualizado.apto; r0.nome = atualizado.nome; r0.whatsapp = atualizado.whatsapp; r0.fotoPath = fotoPath;
+    } catch (e) {
+      showToast('Não consegui salvar as alterações. ' + malotErroMsg(e));
+    } finally {
+      savingMorador = false;
+    }
+  }
+  async function deleteResident(id){
+    try {
+      var alvo = findResident(id);
+      var r = await malote.from('moradores').delete().eq('id', id);
+      if (r.error) throw r.error;
+      if (alvo && alvo.fotoPath){
+        malote.storage.from('morador-fotos').remove([alvo.fotoPath]).catch(function(){ /* melhor esforço, não trava a exclusão */ });
+      }
+      residents = residents.filter(function(rr){ return rr.id !== id; });
+    } catch (e) {
+      showToast('Não consegui excluir o morador. ' + malotErroMsg(e));
+    }
+  }
+
+  async function registerPackage(){
+    var remetente = (document.getElementById('f-remetente')||{}).value || '';
+    var observacao = (document.getElementById('f-obs')||{}).value || '';
+    var appEntrega = (document.getElementById('f-app-entrega')||{}).value || '';
+    var pkg = { id: genId(), codigo: genCode(), criadoEm: new Date().toISOString(), remetente: remetente.trim(), observacao: observacao.trim(), appEntrega: appEntrega.trim() || null, fotoPath: null };
+    if (chosenResidentId){
+      pkg.residentId = chosenResidentId; pkg.bloco = ''; pkg.apto = ''; pkg.nomeAvulso = ''; pkg.telefoneAvulso = '';
+    } else {
+      var b = (document.getElementById('f-manBloco')||{}).value || '';
+      var a = (document.getElementById('f-manApto')||{}).value || '';
+      var n = (document.getElementById('f-manNome')||{}).value || '';
+      var t = (document.getElementById('f-manTelefone')||{}).value || '';
+      if (!a || !n || !t){ showToast('Preencha apto, nome e WhatsApp.'); return null; }
+      pkg.residentId = null; pkg.bloco = b.trim(); pkg.apto = a.trim(); pkg.nomeAvulso = n.trim(); pkg.telefoneAvulso = digits(t);
+    }
+    savingPacote = true;
+    try {
+      // se a etiqueta foi fotografada (fluxo com câmera/OCR), guarda essa
+      // mesma foto anexada à encomenda — dá prova em caso de "não é meu
+      // pacote" e já vai junto no aviso pro morador. Se não tinha foto da
+      // etiqueta (modo manual), usa a foto opcional anexada à parte, se o
+      // porteiro tiver escolhido uma. Melhor esforço: se o upload falhar, a
+      // encomenda ainda assim é registrada sem a foto.
+      var fotoParaAnexar = photoDataUrl || pkgFotoManualDataUrl;
+      if (fotoParaAnexar){
+        try {
+          var caminhoFoto = condominioAtual.id + '/' + pkg.id + '.jpg';
+          var upFoto = await malote.storage.from('encomenda-fotos').upload(caminhoFoto, dataUrlToBlob(fotoParaAnexar), { contentType: 'image/jpeg', upsert: true });
+          if (!upFoto.error) pkg.fotoPath = caminhoFoto;
+        } catch (eFoto) { /* segue sem foto */ }
+      }
+      var r = await malote.from('encomendas').insert(rowFromEncomenda(pkg));
+      if (r.error) throw r.error;
+      // mesma proteção contra corrida com o eco em tempo real da própria inserção.
+      if (!packages.some(function(x){ return x.id === pkg.id; })) packages.push(pkg);
+      return pkg;
+    } catch (e) {
+      showToast('Não consegui registrar a encomenda. ' + malotErroMsg(e));
+      return null;
+    } finally {
+      savingPacote = false;
+    }
+  }
+
+  function resetScan(){
+    photoDataUrl = null; ocrStatus = null; ocrBusy = false; rawText = ''; guess = null; chosenResidentId = ''; manualMode = false;
+    pkgFotoManualDataUrl = null; pkgFormDraft = null;
+  }
+
+  /* ---------- events ---------- */
+  document.addEventListener('click', async function(e){
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    var action = btn.getAttribute('data-action');
+
+    if (action === 'sair-leitor'){
+      if (realtimeChannel){ malote.removeChannel(realtimeChannel); realtimeChannel = null; }
+      await malote.auth.signOut();
+      location.href = 'parceiros/login.html';
+      return;
+    }
+
+    if (action === 'voltar-painel'){
+      if (modoPorteiro) return; // defesa extra: esse botão nem aparece pra porteiro
+      malotVoltar(modoEmpresarial() ? '/empresa/painel.html' : '/sindico/painel.html');
+      return;
+    }
+
+    if (action === 'tab'){ tab = btn.getAttribute('data-tab'); render(); return; }
+    if (action === 'chip-remetente'){ var inp = document.getElementById('f-remetente'); if (inp) inp.value = btn.getAttribute('data-val'); return; }
+    if (action === 'run-ocr'){ if (photoDataUrl) runOcr(photoDataUrl); return; }
+    if (action === 'retake-photo'){ resetScan(); render(); return; }
+    if (action === 'new-scan'){ resetScan(); lastRegisteredId = null; render(); return; }
+    if (action === 'use-manual'){ capturarPkgFormDraft(); manualMode = true; chosenResidentId = ''; render(); return; }
+    if (action === 'manual-entry'){ resetScan(); manualMode = true; render(); return; }
+    if (action === 'notify-confirm'){ return; }
+
+    if (action === 'compartilhar-foto'){
+      var pkgShare = packages.filter(function(x){ return x.id === btn.getAttribute('data-id'); })[0];
+      if (!pkgShare){ return; }
+      var dataUrlShare = photoDataUrl || pkgFotoManualDataUrl;
+      if (!dataUrlShare){ showToast('A foto não está mais disponível nesta tela.'); return; }
+      try {
+        var blobShare = dataUrlToBlob(dataUrlShare);
+        var fileShare = new File([blobShare], 'encomenda.jpg', { type: 'image/jpeg' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [fileShare] })){
+          await navigator.share({ files: [fileShare], text: buildMessage(pkgShare) });
+        } else {
+          showToast('Este aparelho/navegador não deixa compartilhar foto e mensagem juntas. Use "Abrir WhatsApp e notificar" e mande a foto separadamente, se precisar.');
+        }
+      } catch (eShare){
+        if (eShare && eShare.name !== 'AbortError'){
+          showToast('Não consegui abrir o compartilhamento.');
+        }
+      }
+      return;
+    }
+
+    if (action === 'instalar-android'){
+      if (deferredInstallPrompt){
+        installInfoOpen = null;
+        var prompt = deferredInstallPrompt;
+        deferredInstallPrompt = null;
+        prompt.prompt();
+        prompt.userChoice.then(function(){ render(); });
+      } else {
+        // O Chrome não liberou a instalação automática pra esse acesso (ex:
+        // é a primeira vez, ou o link abriu num navegador embutido) — sem um
+        // aviso explícito aqui, o botão parece não fazer nada, já que o
+        // texto de instrução abaixo dele é discreto e pode passar
+        // despercebido.
+        installInfoOpen = (installInfoOpen === 'android') ? null : 'android';
+        render();
+        showToast(isInAppBrowser ? 'Abra este link no Chrome (não pelo WhatsApp/Instagram) pra conseguir instalar.' : 'Veja as instruções logo abaixo do botão para instalar manualmente.');
+      }
+      return;
+    }
+    if (action === 'instalar-ios'){
+      installInfoOpen = (installInfoOpen === 'ios') ? null : 'ios';
+      render();
+      return;
+    }
+
+    if (action === 'filtro-retirada'){ filtroRetirada = btn.getAttribute('data-periodo'); render(); return; }
+
+    if (action === 'abrir-retirada'){ signingPackageId = btn.getAttribute('data-id'); render(); return; }
+    if (action === 'cancelar-assinatura'){ signingPackageId = null; render(); return; }
+    if (action === 'ver-assinatura'){
+      var vid = btn.getAttribute('data-id');
+      expandedSigId = (expandedSigId === vid) ? null : vid;
+      render();
+      return;
+    }
+    if (action === 'limpar-assinatura'){
+      if (sigCtx){ sigCtx.clearRect(0, 0, sigCtx.canvas.width, sigCtx.canvas.height); sigHasStroke = false; }
+      return;
+    }
+    if (action === 'confirmar-retirada'){
+      if (!sigHasStroke){ showToast('Peça para assinar antes de confirmar.'); return; }
+      if (savingRetirada) return;
+      var idAlvo = btn.getAttribute('data-id');
+      var pkgAlvo = packages.filter(function(x){ return x.id === idAlvo; })[0];
+      if (!pkgAlvo) return;
+      var nomeRecebeu = ((document.getElementById('f-retirado-por')||{}).value || '').trim();
+      var canvasEl = document.getElementById('sig-canvas');
+      var assinaturaPng = canvasEl ? canvasEl.toDataURL('image/png') : null;
+      var retiradoEmIso = new Date().toISOString();
+      savingRetirada = true;
+      try {
+        var r = await malote.from('encomendas').update({
+          retirado_em: retiradoEmIso, retirado_por: nomeRecebeu, retirado_assinatura: assinaturaPng
+        }).eq('id', idAlvo);
+        if (r.error) throw r.error;
+        pkgAlvo.retiradoEm = retiradoEmIso;
+        pkgAlvo.retiradoPor = nomeRecebeu;
+        pkgAlvo.retiradoAssinatura = assinaturaPng;
+        signingPackageId = null;
+        showToast('Retirada registrada!');
+      } catch (err) {
+        showToast('Não consegui registrar a retirada. ' + malotErroMsg(err));
+      } finally {
+        savingRetirada = false;
+      }
+      render();
+      return;
+    }
+
+    if (action === 'abrir-codigo-retirada'){
+      codigoRetiradaAberto = true; codigoRetiradaInfo = null; codigoRetiradaErro = null;
+      render();
+      return;
+    }
+    if (action === 'fechar-codigo-retirada'){
+      codigoRetiradaAberto = false; codigoRetiradaInfo = null; codigoRetiradaErro = null;
+      render();
+      return;
+    }
+    if (action === 'validar-codigo-retirada'){
+      if (codigoRetiradaBusy) return;
+      var codigoDigitado = ((document.getElementById('f-codigo-retirada')||{}).value || '').trim();
+      if (!codigoDigitado){ codigoRetiradaErro = 'Digite o código.'; render(); return; }
+      codigoRetiradaBusy = true; codigoRetiradaErro = null; render();
+      try {
+        var rv = await malote.rpc('validar_codigo_retirada', { p_codigo: codigoDigitado });
+        if (rv.error) throw rv.error;
+        var infoV = (rv.data || [])[0];
+        if (!infoV) throw new Error('Código inválido ou expirado.');
+        codigoRetiradaInfo = infoV;
+      } catch (errV) {
+        codigoRetiradaErro = malotErroMsg(errV);
+      } finally {
+        codigoRetiradaBusy = false;
+        render();
+      }
+      return;
+    }
+    if (action === 'confirmar-codigo-retirada'){
+      if (codigoRetiradaBusy || !codigoRetiradaInfo) return;
+      var codigoConfirmar = ((document.getElementById('f-codigo-retirada')||{}).value || '').trim();
+      codigoRetiradaBusy = true; render();
+      try {
+        var rc = await malote.rpc('confirmar_retirada_por_codigo', { p_codigo: codigoConfirmar });
+        if (rc.error) throw rc.error;
+        var qtdLiberadas = ((rc.data || [])[0] || {}).qtd_liberadas || 0;
+        showToast(qtdLiberadas + ' encomenda(s) liberada(s)!');
+        codigoRetiradaAberto = false; codigoRetiradaInfo = null; codigoRetiradaErro = null;
+        await carregarDados();
+      } catch (errC) {
+        codigoRetiradaErro = malotErroMsg(errC);
+      } finally {
+        codigoRetiradaBusy = false;
+        render();
+      }
+      return;
+    }
+
+    if (action === 'toggle-add-resident'){
+      addingResidentOpen = !addingResidentOpen; editingResidentId = null;
+      residentFotoDataUrl = null; residentFotoRemovida = false; residentFotoSignedUrl = null;
+      residentFormDraft = null;
+      render(); return;
+    }
+    if (action === 'cancel-resident-form'){
+      addingResidentOpen = false; editingResidentId = null;
+      residentFotoDataUrl = null; residentFotoRemovida = false; residentFotoSignedUrl = null;
+      residentFormDraft = null;
+      render(); return;
+    }
+    if (action === 'edit-resident'){
+      editingResidentId = btn.getAttribute('data-id'); addingResidentOpen = false;
+      residentFotoDataUrl = null; residentFotoRemovida = false; residentFotoSignedUrl = null;
+      residentFormDraft = null;
+      render();
+      var editAlvo = findResident(editingResidentId);
+      if (editAlvo && editAlvo.fotoPath){
+        try {
+          var signed = await malote.storage.from('morador-fotos').createSignedUrl(editAlvo.fotoPath, 3600);
+          if (!signed.error && signed.data){ residentFotoSignedUrl = signed.data.signedUrl; capturarResidentFormDraft(); render(); }
+        } catch (e) { /* sem preview disponível agora — segue sem foto na tela de edição */ }
+      }
+      return;
+    }
+    if (action === 'remover-foto-morador'){
+      capturarResidentFormDraft();
+      residentFotoDataUrl = null; residentFotoSignedUrl = null; residentFotoRemovida = true; render(); return;
+    }
+    if (action === 'remover-foto-encomenda-manual'){
+      capturarPkgFormDraft();
+      pkgFotoManualDataUrl = null; render(); return;
+    }
+    if (action === 'delete-resident'){
+      var delId = btn.getAttribute('data-id');
+      if (deletingResidentIds[delId]) return;
+      deletingResidentIds[delId] = true;
+      await deleteResident(delId);
+      delete deletingResidentIds[delId];
+      render();
+      return;
+    }
+    if (action === 'save-resident'){
+      if (savingMorador) return;
+      var data = {
+        bloco: (document.getElementById('f-r-bloco')||{}).value || '', apto: document.getElementById('f-r-apto').value,
+        nome: document.getElementById('f-r-nome').value, whatsapp: document.getElementById('f-r-whatsapp').value
+      };
+      if (!data.apto || !data.nome || !data.whatsapp){ showToast('Preencha apto, nome e WhatsApp.'); return; }
+      var id = btn.getAttribute('data-id');
+      if (id) await updateResident(id, data); else await addResident(data);
+      addingResidentOpen = false; editingResidentId = null;
+      residentFotoDataUrl = null; residentFotoRemovida = false; residentFotoSignedUrl = null;
+      residentFormDraft = null;
+      render();
+      return;
+    }
+
+    if (action === 'toggle-add-colab-porteiro'){
+      addingColabPorteiroOpen = !addingColabPorteiroOpen;
+      colabPorteiroDraft = null;
+      render(); return;
+    }
+    if (action === 'cancel-colab-porteiro-form'){
+      addingColabPorteiroOpen = false;
+      colabPorteiroDraft = null;
+      render(); return;
+    }
+    if (action === 'save-colab-porteiro'){
+      if (savingColabPorteiro) return;
+      var cNome = (document.getElementById('f-colab-nome')||{}).value || '';
+      var cWhatsapp = (document.getElementById('f-colab-whatsapp')||{}).value || '';
+      var cUnidade = (document.getElementById('sel-colab-unidade')||{}).value || '';
+      var cSetor = (document.getElementById('sel-colab-setor')||{}).value || '';
+      if (!cNome.trim()){ showToast('Preencha o nome.'); return; }
+      if (!cUnidade){ showToast('Selecione a unidade.'); return; }
+      await addColaboradorPorteiro({ nome: cNome, whatsapp: cWhatsapp, unidadeId: cUnidade, setorId: cSetor || null });
+      addingColabPorteiroOpen = false;
+      colabPorteiroDraft = null;
+      render();
+      return;
+    }
+
+    if (action === 'registrar'){
+      if (savingPacote) return;
+      var pkg = await registerPackage();
+      if (pkg){
+        lastRegisteredId = pkg.id;
+        // Avisa o morador na hora (push), se ele tiver conta e app instalado.
+        // Melhor esforço: se falhar (sem conta, sem app, offline etc.), a
+        // encomenda já foi registrada normalmente — o lembrete diário
+        // também pega esse caso depois.
+        if (pkg.residentId){
+          malote.functions.invoke('push-notificar-novo', { body: { encomenda_id: pkg.id } }).catch(function(){});
+        }
+      }
+      render();
+      return;
+    }
+
+    if (action === 'gen-backup'){
+      if (modoEmpresarial()){ showToast('Backup por texto ainda não está disponível para empresas.'); return; }
+      var json = JSON.stringify({ residents: residents, packages: packages, qtdBlocos: qtdBlocos }, null, 2);
+      document.getElementById('backup-area').value = json;
+      try { document.getElementById('backup-area').select(); document.execCommand('copy'); showToast('Backup gerado e copiado. Cole em um bloco de notas para guardar.'); }
+      catch(e){ showToast('Backup gerado abaixo. Selecione e copie o texto.'); }
+      return;
+    }
+    if (action === 'import-backup'){
+      if (modoEmpresarial()){ showToast('Importar por texto ainda não está disponível para empresas.'); return; }
+      var text = document.getElementById('backup-area').value;
+      var importResidents, importPackages, importQtdBlocos;
+      try {
+        var data = JSON.parse(text);
+        if (Array.isArray(data)) { importResidents = data; importPackages = []; }
+        else {
+          importResidents = Array.isArray(data.residents) ? data.residents : [];
+          importPackages = Array.isArray(data.packages) ? data.packages : [];
+          importQtdBlocos = (typeof data.qtdBlocos === 'number' && data.qtdBlocos >= 1) ? data.qtdBlocos : null;
+        }
+      } catch(err){ showToast('Texto invalido. Cole um JSON valido de backup ou de moradores.'); return; }
+
+      if (!condominioAtual){ showToast('Aguarde carregar os dados antes de importar.'); return; }
+      try {
+        if (importResidents.length){
+          var linhasM = importResidents.map(function(r){
+            return rowFromMorador({ id: r.id || genId(), bloco: r.bloco || '', apto: r.apto || '', nome: r.nome || '', whatsapp: digits(r.whatsapp || ''), fotoPath: r.fotoPath || null });
+          });
+          var rm = await malote.from('moradores').upsert(linhasM);
+          if (rm.error) throw rm.error;
+        }
+        if (importPackages.length){
+          var linhasE = importPackages.map(function(p){
+            return rowFromEncomenda({
+              id: p.id || genId(), codigo: p.codigo || '', criadoEm: p.criadoEm || new Date().toISOString(),
+              remetente: p.remetente || '', observacao: p.observacao || '', residentId: p.residentId || null,
+              bloco: p.bloco || '', apto: p.apto || '', nomeAvulso: p.nomeAvulso || '', telefoneAvulso: p.telefoneAvulso || '',
+              retiradoEm: p.retiradoEm || null, retiradoPor: p.retiradoPor || null, retiradoAssinatura: p.retiradoAssinatura || null
+            });
+          });
+          var re = await malote.from('encomendas').upsert(linhasE);
+          if (re.error) throw re.error;
+        }
+        if (importQtdBlocos){
+          qtdBlocos = importQtdBlocos;
+          condominioAtual.qtdBlocos = qtdBlocos;
+          var rc = await malote.from('condominios').update({ qtd_blocos: qtdBlocos }).eq('id', condominioAtual.id);
+          if (rc.error) throw rc.error;
+        }
+        await carregarDados();
+        showToast('Dados importados com sucesso.');
+      } catch(err){ showToast('Não consegui importar. ' + malotErroMsg(err)); render(); }
+      return;
+    }
+
+    if (action === 'import-abrir'){
+      importAberto = btn.getAttribute('data-tipo');
+      importPreview = null; importFotoDataUrl = null; importStatus = null;
+      render();
+      return;
+    }
+    if (action === 'import-fechar'){
+      importAberto = null; importPreview = null; importFotoDataUrl = null; importStatus = null; importBusy = false;
+      render();
+      return;
+    }
+    if (action === 'import-foto-trocar'){ importFotoDataUrl = null; render(); return; }
+    if (action === 'import-foto-ler'){
+      if (!importFotoDataUrl || importBusy) return;
+      importBusy = true; importStatus = 'iniciando leitor...'; render();
+      try {
+        var linhasFoto = await parseFotoLista(importFotoDataUrl);
+        if (!linhasFoto.length){ showToast('Não consegui reconhecer nenhuma linha nessa foto. Tente uma foto mais nítida.'); }
+        importPreview = linhasFoto;
+      } catch (err){
+        showToast('Não consegui ler a foto. ' + malotErroMsg(err));
+      }
+      importBusy = false; importStatus = null; render();
+      return;
+    }
+    if (action === 'import-remover-linha'){
+      var idxRem = parseInt(btn.getAttribute('data-idx'), 10);
+      if (importPreview) importPreview.splice(idxRem, 1);
+      render();
+      return;
+    }
+    if (action === 'import-add-linha'){
+      if (!importPreview) importPreview = [];
+      importPreview.push({ bloco:'', apto:'', nome:'', whatsapp:'' });
+      render();
+      return;
+    }
+    if (action === 'import-confirmar'){
+      if (!importPreview || !importPreview.length || importBusy) return;
+      var validos = importPreview.filter(function(l){ return (l.apto && l.apto.trim()) || (l.nome && l.nome.trim()); });
+      if (!validos.length){ showToast('Nenhuma linha válida para cadastrar.'); return; }
+      importBusy = true; render();
+      try {
+        var linhasImp = validos.map(function(l){
+          return rowFromMorador({ id: genId(), bloco: (l.bloco||'').trim(), apto: (l.apto||'').trim(), nome: (l.nome||'').trim(), whatsapp: digits(l.whatsapp||'') });
+        });
+        var rImp = await malote.from('moradores').upsert(linhasImp);
+        if (rImp.error) throw rImp.error;
+        await carregarDados();
+        showToast(linhasImp.length + ' morador(es) importado(s) com sucesso.');
+        importAberto = null; importPreview = null; importFotoDataUrl = null;
+      } catch (err){
+        showToast('Não consegui importar. ' + malotErroMsg(err));
+      }
+      importBusy = false; render();
+      return;
+    }
+  });
+
+  document.addEventListener('change', function(e){
+    if (e.target.matches('[data-action="photo-input"]')){
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        var img = new Image();
+        img.onload = function(){
+          var maxW = 900;
+          var scale = Math.min(1, maxW / img.width);
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          photoDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          render();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+    if (e.target.matches('[data-action="resident-select"]')){
+      capturarPkgFormDraft();
+      var val = e.target.value;
+      if (val === '__manual__'){ chosenResidentId = ''; manualMode = true; }
+      else { chosenResidentId = val; manualMode = false; }
+      render();
+    }
+    if (e.target.matches('[data-action="colab-unidade-select"]')){
+      capturarColabPorteiroDraft();
+      colabPorteiroDraft.unidadeId = e.target.value;
+      colabPorteiroDraft.setorId = ''; // trocar de unidade limpa o setor escolhido antes
+      render();
+    }
+    if (e.target.matches('[data-action="colab-setor-select"]')){
+      capturarColabPorteiroDraft();
+      render();
+    }
+    if (e.target.matches('#f-qtd-blocos')){
+      var n = parseInt(e.target.value, 10);
+      qtdBlocos = (isNaN(n) || n < 1) ? 1 : n;
+      render();
+      if (condominioAtual){
+        condominioAtual.qtdBlocos = qtdBlocos;
+        malote.from('condominios').update({ qtd_blocos: qtdBlocos }).eq('id', condominioAtual.id).then(function(r){
+          if (r.error) showToast('Não consegui salvar a quantidade de blocos. ' + malotErroMsg(r.error));
+        });
+      }
+    }
+
+    if (e.target.matches('[data-action="foto-morador-input"]')){
+      var fileM = e.target.files && e.target.files[0];
+      if (!fileM) return;
+      capturarResidentFormDraft();
+      var readerM = new FileReader();
+      readerM.onload = function(ev){
+        var imgM = new Image();
+        imgM.onload = function(){
+          var maxWM = 500;
+          var scaleM = Math.min(1, maxWM / imgM.width);
+          var canvasM = document.createElement('canvas');
+          canvasM.width = Math.round(imgM.width * scaleM);
+          canvasM.height = Math.round(imgM.height * scaleM);
+          var ctxM = canvasM.getContext('2d');
+          ctxM.drawImage(imgM, 0, 0, canvasM.width, canvasM.height);
+          residentFotoDataUrl = canvasM.toDataURL('image/jpeg', 0.85);
+          residentFotoRemovida = false;
+          render();
+        };
+        imgM.src = ev.target.result;
+      };
+      readerM.readAsDataURL(fileM);
+    }
+
+    if (e.target.matches('[data-action="foto-encomenda-manual-input"]')){
+      var fileP = e.target.files && e.target.files[0];
+      if (!fileP) return;
+      capturarPkgFormDraft();
+      var readerP = new FileReader();
+      readerP.onload = function(ev){
+        var imgP = new Image();
+        imgP.onload = function(){
+          var maxWP = 900;
+          var scaleP = Math.min(1, maxWP / imgP.width);
+          var canvasP = document.createElement('canvas');
+          canvasP.width = Math.round(imgP.width * scaleP);
+          canvasP.height = Math.round(imgP.height * scaleP);
+          var ctxP = canvasP.getContext('2d');
+          ctxP.drawImage(imgP, 0, 0, canvasP.width, canvasP.height);
+          pkgFotoManualDataUrl = canvasP.toDataURL('image/jpeg', 0.85);
+          render();
+        };
+        imgP.src = ev.target.result;
+      };
+      readerP.readAsDataURL(fileP);
+    }
+
+    if (e.target.matches('[data-action="import-planilha-input"]')){
+      var fileP = e.target.files && e.target.files[0];
+      if (!fileP) return;
+      importBusy = true; importStatus = 'lendo planilha...'; render();
+      parsePlanilha(fileP).then(function(linhas){
+        if (!linhas.length) showToast('Não encontrei linhas na planilha.');
+        importPreview = linhas;
+      }).catch(function(err){
+        showToast('Não consegui ler a planilha. ' + malotErroMsg(err));
+      }).finally(function(){
+        importBusy = false; importStatus = null; render();
+      });
+    }
+
+    if (e.target.matches('[data-action="import-pdf-input"]')){
+      var fileD = e.target.files && e.target.files[0];
+      if (!fileD) return;
+      if (!window.pdfjsLib){ showToast('O leitor de PDF ainda não carregou. Verifique sua conexão e tente novamente.'); return; }
+      importBusy = true; importStatus = 'lendo PDF...'; render();
+      parsePdf(fileD).then(function(linhas){
+        if (!linhas.length) showToast('Não encontrei linhas no PDF.');
+        importPreview = linhas;
+      }).catch(function(err){
+        showToast('Não consegui ler o PDF. ' + malotErroMsg(err));
+      }).finally(function(){
+        importBusy = false; importStatus = null; render();
+      });
+    }
+
+    if (e.target.matches('[data-action="import-foto-input"]')){
+      var fileF = e.target.files && e.target.files[0];
+      if (!fileF) return;
+      var readerF = new FileReader();
+      readerF.onload = function(ev){
+        var imgF = new Image();
+        imgF.onload = function(){
+          var maxWF = 1100;
+          var scaleF = Math.min(1, maxWF / imgF.width);
+          var canvasF = document.createElement('canvas');
+          canvasF.width = Math.round(imgF.width * scaleF);
+          canvasF.height = Math.round(imgF.height * scaleF);
+          var ctxF = canvasF.getContext('2d');
+          ctxF.drawImage(imgF, 0, 0, canvasF.width, canvasF.height);
+          importFotoDataUrl = canvasF.toDataURL('image/jpeg', 0.85);
+          render();
+        };
+        imgF.src = ev.target.result;
+      };
+      readerF.readAsDataURL(fileF);
+    }
+
+    if (e.target.matches('[data-import-campo]')){
+      var campoImp = e.target.getAttribute('data-import-campo');
+      var idxImp = parseInt(e.target.getAttribute('data-import-idx'), 10);
+      if (importPreview && importPreview[idxImp]) importPreview[idxImp][campoImp] = e.target.value;
+      // não chama render() aqui de propósito — preservaria o foco do campo perdido a cada tecla.
+    }
+  });
+
+  document.addEventListener('pointerdown', function(e){
+    if (!e.target.matches || !e.target.matches('#sig-canvas') || !sigCtx) return;
+    e.preventDefault();
+    sigDrawing = true;
+    sigHasStroke = true;
+    var p = sigPointFromEvent(e);
+    sigLast = p;
+    try { e.target.setPointerCapture(e.pointerId); } catch(err){ /* ignore */ }
+    sigCtx.beginPath();
+    sigCtx.moveTo(p.x, p.y);
+    sigCtx.lineTo(p.x + 0.1, p.y + 0.1);
+    sigCtx.stroke();
+  });
+  document.addEventListener('pointermove', function(e){
+    if (!sigDrawing || !sigCtx) return;
+    e.preventDefault();
+    var p = sigPointFromEvent(e);
+    sigCtx.beginPath();
+    sigCtx.moveTo(sigLast.x, sigLast.y);
+    sigCtx.lineTo(p.x, p.y);
+    sigCtx.stroke();
+    sigLast = p;
+  });
+  function sigEndStroke(){ sigDrawing = false; sigLast = null; }
+  document.addEventListener('pointerup', sigEndStroke);
+  document.addEventListener('pointercancel', sigEndStroke);
+
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    render();
+  });
+  window.addEventListener('appinstalled', function(){
+    deferredInstallPrompt = null;
+    render();
+  });
+
+  try {
+    var tabParam = new URLSearchParams(location.search).get('tab');
+    if (tabParam === 'ler' || tabParam === 'moradores' || tabParam === 'historico') tab = tabParam;
+  } catch (e) { /* URLSearchParams indisponível: mantém aba padrão */ }
+  render();
+  iniciar();
+
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){ /* offline caching is best-effort */ });
+    });
+  }
+})();
+</script>
+<div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="images/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>

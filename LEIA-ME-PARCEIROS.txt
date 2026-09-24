@@ -1,0 +1,58 @@
+MALOTE — PROGRAMA DE PARCEIROS
+Como ativar e usar
+
+O QUE FOI CRIADO
+- Um banco de dados novo no Supabase (projeto "malote", plano gratuito),
+  com todas as tabelas, regras de segurança (RLS) e a automação de
+  comissão — tudo já publicado e testado.
+- Uma pasta nova dentro do seu Malote: C:\Malote\parceiros\
+  - cadastro.html      -> conta do condomínio (cliente)
+  - login.html         -> entrada única (cliente / parceiro / admin)
+  - painel-cliente.html-> painel simples do condomínio
+  - portal-parceiro.html -> portal do parceiro (carteira, comissões, link)
+  - admin.html          -> painel do administrador
+  - assets/             -> estilo e conexão com o banco
+- Um arquivo _redirects na raiz (C:\Malote\_redirects) que faz o link
+  https://seusite.netlify.app/indicar/CODIGO funcionar.
+
+PRA PUBLICAR
+Igual sempre: arraste a pasta C:\Malote inteira (ou o zip dela) de novo
+no Netlify Drop / na aba Deploys do seu site já existente. Como agora tem
+mais arquivos, é melhor arrastar a pasta toda, não só o zip do leitor.
+
+COMO VIRAR ADMINISTRADOR (primeira vez, só uma vez)
+1. Publique o site.
+2. Abra https://SEUSITE.netlify.app/parceiros/cadastro.html e crie uma
+   conta com o SEU e-mail (o mesmo que você quer usar como admin).
+3. Confirme o e-mail se o Supabase pedir.
+4. Me avise aqui no chat que você criou a conta, com o e-mail usado —
+   eu insiro você como administrador no banco (isso não dá pra fazer
+   pelo próprio app, é de propósito, por segurança).
+5. Depois disso, entrar em /parceiros/login.html com esse e-mail já
+   abre direto o painel de admin.
+
+COMO CADASTRAR UM PARCEIRO
+No painel do admin, aba "Parceiros": nome, e-mail e um código curto
+(ex: ANA2024). O parceiro então cria uma conta normal (tela de "Criar
+conta", em /parceiros/cadastro.html) usando EXATAMENTE esse e-mail — o
+nome de condomínio que ele preencher ali não importa nesse caso. Ao
+entrar em /parceiros/login.html, o Malote casa o e-mail sozinho e manda
+ele direto pro portal de parceiro, mesmo no primeiro acesso.
+
+COMO FUNCIONA O LINK DE INDICAÇÃO
+Cada parceiro tem um link: https://seusite.netlify.app/indicar/CODIGO
+Quem se cadastra por esse link fica automaticamente na carteira dele.
+O primeiro código que a pessoa abrir é o que vale (não dá pra roubar
+carteira de outro parceiro abrindo outro link depois).
+
+COMO REGISTRAR PAGAMENTO E GERAR COMISSÃO
+Painel do admin, aba "Pagamentos": escolhe o cliente, valor e mês,
+marca como "Pago". A comissão (50% por padrão, dá pra mudar na aba
+"Config") é criada sozinha pro parceiro daquele cliente. Estornar o
+pagamento cancela a comissão automaticamente.
+
+IMPORTANTE
+- Isso é uma conta de banco de dados SEPARADA do Leitor de Etiqueta
+  (que continua funcionando exatamente como antes, sem login).
+- As chaves usadas no front são públicas por natureza (protegidas pelas
+  regras de segurança no banco) — não precisa esconder.

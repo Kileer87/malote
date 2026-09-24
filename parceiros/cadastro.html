@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Criar conta — Malote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/parceiros/assets/estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  .grupo-conta-opcoes{ display:flex; flex-direction:column; gap:10px; }
+  .grupo-conta-btn{
+    display:block; width:100%; text-align:left; padding:14px 16px;
+    border-radius:12px; border:1px solid var(--border); background:var(--paper-2);
+    color:var(--ink); cursor:pointer; font-family:inherit;
+  }
+  .grupo-conta-btn:hover{ border-color:var(--accent); }
+  .grupo-conta-btn.ativo{ border-color:var(--accent); background:rgba(239,107,44,0.14); }
+  .grupo-conta-btn strong{ display:block; font-size:15px; margin-bottom:3px; color:var(--ink); }
+  .grupo-conta-btn span{ display:block; font-size:12.5px; color:var(--ink-muted); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-badge" src="/icons/icon-192.png" alt="Malote">
+      <div><div class="word">Malote</div><div class="sub">Criar conta</div></div>
+    </div>
+    <button type="button" class="btn btn-outline btn-sm" onclick="malotVoltar('/index.html')">Voltar</button>
+  </div>
+
+  <div class="shell narrow">
+    <div class="card">
+      <h2 id="cadastro-titulo">Criar conta</h2>
+
+      <div id="passo-conta">
+        <div class="field" id="passo-grupo">
+          <label>Como você vai usar o Malote?</label>
+          <div class="grupo-conta-opcoes">
+            <button type="button" class="grupo-conta-btn" id="grupo-abrir" data-grupo="abrir">
+              <strong>Quero abrir uma conta</strong>
+              <span>Condomínio, empresa ou parceiro comercial</span>
+            </button>
+            <button type="button" class="grupo-conta-btn" id="grupo-vinculo" data-grupo="vinculo">
+              <strong>Já faço parte de um condomínio ou empresa</strong>
+              <span>Sou morador ou colaborador</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="passo-tipo-especifico" style="display:none;">
+        <div class="field">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <label style="margin-bottom:0;">Tipo de conta</label>
+            <a href="#" id="link-trocar-grupo" style="font-size:12px;">← Trocar</a>
+          </div>
+          <div class="actions" id="botoes-grupo-abrir" style="margin-top:0;flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary" id="tipo-cliente" style="flex:1;min-width:110px;">Condomínio</button>
+            <button type="button" class="btn btn-outline" id="tipo-empresa" style="flex:1;min-width:110px;">Empresa</button>
+            <button type="button" class="btn btn-outline" id="tipo-parceiro" style="flex:1;min-width:110px;">Parceiro</button>
+          </div>
+          <div class="actions" id="botoes-grupo-vinculo" style="margin-top:0;flex-wrap:wrap;display:none;">
+            <button type="button" class="btn btn-primary" id="tipo-morador" style="flex:1;min-width:110px;">Morador</button>
+            <button type="button" class="btn btn-outline" id="tipo-colaborador" style="flex:1;min-width:110px;">Colaborador</button>
+          </div>
+        </div>
+
+        <div id="campos-cliente">
+          <div class="field" id="campo-condominio-existente" style="display:none;">
+            <label>Seu condomínio já foi cadastrado por nós?</label>
+            <select id="f-condominio-existente"><option value="">Não, vou cadastrar um novo</option></select>
+            <div class="help">Se você já conversou com a gente antes, seu condomínio pode já estar pré-cadastrado — selecione ele aqui pra não duplicar.</div>
+          </div>
+          <div id="campos-cliente-novo">
+            <div class="field"><label>Nome do condomínio</label><input type="text" id="f-nome" placeholder="Ex: Residencial Jardim das Flores"></div>
+            <div class="form-grid">
+              <div class="field"><label>Quantidade de blocos/torres</label><input type="number" id="f-blocos" min="1" step="1" value="1"></div>
+              <div class="field"><label>Quantidade de apartamentos</label><input type="number" id="f-apartamentos" min="1" step="1" placeholder="Ex: 40"></div>
+            </div>
+            <p class="hint" id="cadastro-valor-hint" style="margin-top:-4px;">Mensalidade: <strong>R$ 59,90/mês</strong> (até 60 apartamentos).</p>
+            <div class="form-grid">
+              <div class="field"><label>CEP</label><input type="text" id="f-cep" placeholder="Ex: 01310-100" inputmode="numeric" maxlength="9"></div>
+              <div class="field"><label>Número</label><input type="text" id="f-numero" placeholder="Ex: 123"></div>
+            </div>
+            <div class="field"><label>Endereço</label><input type="text" id="f-endereco" placeholder="Rua, avenida..."></div>
+            <div class="field"><label>Bairro</label><input type="text" id="f-bairro" placeholder="Ex: Centro"></div>
+            <div class="form-grid">
+              <div class="field"><label>Cidade</label><input type="text" id="f-cidade" placeholder="Ex: São Paulo"></div>
+              <div class="field"><label>UF</label>
+                <select id="f-uf">
+                  <option value="">Selecione...</option>
+                  <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option>
+                  <option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option>
+                  <option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option>
+                  <option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+                  <option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option>
+                  <option>SE</option><option>TO</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="campos-empresa" style="display:none;">
+          <div class="field"><label>Nome fantasia</label><input type="text" id="f-nome-empresa" placeholder="Ex: Supera Coworking"></div>
+          <div class="form-grid">
+            <div class="field"><label>Razão social</label><input type="text" id="f-razao-social" placeholder="Ex: Supera Serviços LTDA"></div>
+            <div class="field"><label>CNPJ</label><input type="text" id="f-cnpj" placeholder="00.000.000/0000-00"></div>
+          </div>
+          <div class="field"><label>Nome da primeira unidade</label><input type="text" id="f-nome-unidade" placeholder="Ex: Recife (deixe em branco pra usar 'Matriz')"></div>
+          <div class="field"><label>Quantidade de colaboradores</label><input type="number" id="f-qtd-colaboradores-empresa" min="1" step="1" placeholder="Ex: 650"></div>
+          <p class="hint" id="cadastro-empresa-valor-hint" style="margin-top:-4px;">Plano Empresarial: <strong>R$ 349,00/mês</strong> (até 500 colaboradores).</p>
+          <div class="form-grid">
+            <div class="field"><label>CEP</label><input type="text" id="f-cep-empresa" placeholder="Ex: 01310-100" inputmode="numeric" maxlength="9"></div>
+            <div class="field"><label>Número</label><input type="text" id="f-numero-empresa" placeholder="Ex: 123"></div>
+          </div>
+          <div class="field"><label>Endereço</label><input type="text" id="f-endereco-empresa" placeholder="Rua, avenida..."></div>
+          <div class="field"><label>Bairro</label><input type="text" id="f-bairro-empresa" placeholder="Ex: Centro"></div>
+          <div class="form-grid">
+            <div class="field"><label>Cidade</label><input type="text" id="f-cidade-empresa" placeholder="Ex: Recife"></div>
+            <div class="field"><label>UF</label>
+              <select id="f-uf-empresa">
+                <option value="">Selecione...</option>
+                <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option>
+                <option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option>
+                <option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option>
+                <option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+                <option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option>
+                <option>SE</option><option>TO</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint" style="margin-top:-4px;">Depois de criar a conta você vai pro painel da empresa confirmar o pagamento — o acesso é liberado automaticamente assim que ele for aprovado.</p>
+        </div>
+
+        <div id="campos-parceiro" style="display:none;">
+          <div class="field"><label>Seu nome</label><input type="text" id="f-nome-parceiro" placeholder="Ex: Ana Souza"></div>
+        </div>
+
+        <div id="campos-morador" style="display:none;">
+          <p class="hint" style="margin-top:0;">Não conhece o Malote? <a href="https://eloquent-tulumba-6ca036.netlify.app/" target="_blank" rel="noopener">Veja como funciona</a>.</p>
+          <div class="field">
+            <label>Seu condomínio</label>
+            <select id="f-condominio-morador"><option value="">Carregando...</option></select>
+            <div class="help" id="morador-sem-condominio" style="display:none;color:var(--warn);">Nenhum condomínio encontrado. Peça pro síndico ou pra portaria confirmar se o Malote já está cadastrado aí.</div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>Bloco / Torre</label><input type="text" id="f-bloco-morador" placeholder="Ex: 2 ou Jasmim"></div>
+            <div class="field"><label>Apartamento</label><input type="text" id="f-apto-morador" placeholder="Ex: 101"></div>
+          </div>
+          <div class="field"><label>Seu nome</label><input type="text" id="f-nome-morador" placeholder="Ex: Ana Souza"></div>
+          <div class="field"><label>WhatsApp (opcional)</label><input type="text" id="f-whatsapp-morador" placeholder="Ex: 11 98765-4321"></div>
+        </div>
+
+        <div id="campos-colaborador" style="display:none;">
+          <div class="field">
+            <label>Sua empresa</label>
+            <select id="f-empresa-colaborador"><option value="">Carregando...</option></select>
+            <div class="help" id="colaborador-sem-empresa" style="display:none;color:var(--warn);">Nenhuma empresa encontrada. Peça pra sua empresa confirmar se o Malote Empresarial já está cadastrado.</div>
+          </div>
+          <div class="field">
+            <label>Sua unidade</label>
+            <select id="f-unidade-colaborador"><option value="">Selecione a empresa primeiro</option></select>
+          </div>
+          <div class="field">
+            <label>Seu setor (opcional)</label>
+            <select id="f-setor-colaborador"><option value="">Selecione a unidade primeiro</option></select>
+          </div>
+          <div class="field">
+            <label>Seu nome</label>
+            <input type="text" id="f-nome-colaborador" placeholder="Ex: Maria Silva" list="lista-colaboradores-pre-cadastro" autocomplete="off">
+            <datalist id="lista-colaboradores-pre-cadastro"></datalist>
+            <p class="help" id="colaborador-pre-cadastro-hint" style="display:none;color:var(--ok);">Encontramos seu cadastro feito pela empresa — já preenchemos sua unidade e setor. Confira e ajuste se precisar.</p>
+          </div>
+          <div class="field"><label>WhatsApp (opcional)</label><input type="text" id="f-whatsapp-colaborador" placeholder="Ex: 11 98765-4321"></div>
+        </div>
+
+        <div class="field"><label>Seu e-mail</label><input type="email" id="f-email" placeholder="voce@email.com"></div>
+        <div class="field"><label>Senha</label><div class="campo-senha"><input type="password" id="f-senha" placeholder="Mínimo 6 caracteres"><button type="button" class="btn-toggle-senha" data-toggle-senha="f-senha" tabindex="-1" aria-label="Mostrar senha"></button></div></div>
+        <div class="field"><label>Confirmar senha</label><div class="campo-senha"><input type="password" id="f-confirmar-senha" placeholder="Digite a senha de novo"><button type="button" class="btn-toggle-senha" data-toggle-senha="f-confirmar-senha" tabindex="-1" aria-label="Mostrar senha"></button></div></div>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-criar" style="width:100%;">Criar conta</button>
+        </div>
+        <p class="hint" style="margin-top:14px;margin-bottom:0;">Já tem conta? <a href="/parceiros/login.html">Entrar</a></p>
+        </div>
+      </div>
+
+      <div id="passo-confirme" style="display:none;text-align:center;">
+        <p>Cadastro recebido! Sua conta fica aguardando a liberação do administrador — assim que ele confirmar, você já consegue entrar normalmente. Não precisa checar o e-mail.</p>
+        <a class="btn btn-outline" href="/parceiros/login.html" style="width:100%;">Ir pra tela de entrar</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="/parceiros/assets/supabase-client.js"></script>
+  <script src="/parceiros/assets/ref-capture.js"></script>
+  <script>
+    var tipoConta = 'cliente';
+    var grupoConta = null;
+    var condominiosCarregados = false;
+    var condominiosSemDonoCarregados = false;
+
+    // Passo 1: agrupa os 5 tipos de conta em 2 escolhas grandes, pra não
+    // jogar 5 botões de uma vez pra quem tá chegando agora. Só depois de
+    // escolher o grupo é que aparecem as opções específicas (e o resto do
+    // formulário) — reaproveita 100% da lógica de selecionarTipoConta.
+    function selecionarGrupoConta(grupo){
+      grupoConta = grupo;
+      document.getElementById('grupo-abrir').className = 'grupo-conta-btn' + (grupo === 'abrir' ? ' ativo' : '');
+      document.getElementById('grupo-vinculo').className = 'grupo-conta-btn' + (grupo === 'vinculo' ? ' ativo' : '');
+      document.getElementById('botoes-grupo-abrir').style.display = grupo === 'abrir' ? 'flex' : 'none';
+      document.getElementById('botoes-grupo-vinculo').style.display = grupo === 'vinculo' ? 'flex' : 'none';
+      document.getElementById('passo-grupo').style.display = 'none';
+      document.getElementById('passo-tipo-especifico').style.display = 'block';
+      selecionarTipoConta(grupo === 'abrir' ? 'cliente' : 'morador');
+    }
+    document.getElementById('grupo-abrir').addEventListener('click', function(){ selecionarGrupoConta('abrir'); });
+    document.getElementById('grupo-vinculo').addEventListener('click', function(){ selecionarGrupoConta('vinculo'); });
+    document.getElementById('link-trocar-grupo').addEventListener('click', function(e){
+      e.preventDefault();
+      grupoConta = null;
+      document.getElementById('grupo-abrir').className = 'grupo-conta-btn';
+      document.getElementById('grupo-vinculo').className = 'grupo-conta-btn';
+      document.getElementById('passo-tipo-especifico').style.display = 'none';
+      document.getElementById('passo-grupo').style.display = 'block';
+      document.getElementById('cadastro-titulo').textContent = 'Criar conta';
+    });
+
+    function selecionarTipoConta(tipo){
+      tipoConta = tipo;
+      document.getElementById('tipo-cliente').className = 'btn ' + (tipo === 'cliente' ? 'btn-primary' : 'btn-outline');
+      document.getElementById('tipo-empresa').className = 'btn ' + (tipo === 'empresa' ? 'btn-primary' : 'btn-outline');
+      document.getElementById('tipo-parceiro').className = 'btn ' + (tipo === 'parceiro' ? 'btn-primary' : 'btn-outline');
+      document.getElementById('tipo-morador').className = 'btn ' + (tipo === 'morador' ? 'btn-primary' : 'btn-outline');
+      document.getElementById('tipo-colaborador').className = 'btn ' + (tipo === 'colaborador' ? 'btn-primary' : 'btn-outline');
+      document.getElementById('campos-cliente').style.display = tipo === 'cliente' ? 'block' : 'none';
+      document.getElementById('campos-empresa').style.display = tipo === 'empresa' ? 'block' : 'none';
+      document.getElementById('campos-parceiro').style.display = tipo === 'parceiro' ? 'block' : 'none';
+      document.getElementById('campos-morador').style.display = tipo === 'morador' ? 'block' : 'none';
+      document.getElementById('campos-colaborador').style.display = tipo === 'colaborador' ? 'block' : 'none';
+      if (tipo === 'colaborador'){
+        document.getElementById('cadastro-titulo').textContent = 'Criar conta de colaborador';
+        carregarEmpresasParaColaborador();
+      } else if (tipo === 'empresa'){
+        document.getElementById('cadastro-titulo').textContent = 'Criar conta de empresa';
+      } else if (tipo === 'parceiro'){
+        document.getElementById('cadastro-titulo').textContent = 'Criar conta de parceiro';
+      } else if (tipo === 'morador'){
+        document.getElementById('cadastro-titulo').textContent = 'Criar conta de morador';
+        carregarCondominiosParaMorador();
+      } else {
+        document.getElementById('cadastro-titulo').textContent = 'Criar conta do condomínio';
+        carregarCondominiosSemDono();
+      }
+    }
+    document.getElementById('tipo-cliente').addEventListener('click', function(){ selecionarTipoConta('cliente'); });
+    document.getElementById('tipo-empresa').addEventListener('click', function(){ selecionarTipoConta('empresa'); });
+    document.getElementById('tipo-parceiro').addEventListener('click', function(){ selecionarTipoConta('parceiro'); });
+    document.getElementById('tipo-morador').addEventListener('click', function(){ selecionarTipoConta('morador'); });
+    document.getElementById('tipo-colaborador').addEventListener('click', function(){ selecionarTipoConta('colaborador'); });
+
+    async function carregarCondominiosParaMorador(){
+      if (condominiosCarregados) return;
+      var select = document.getElementById('f-condominio-morador');
+      try {
+        var r = await malote.rpc('listar_condominios_para_morador');
+        if (r.error) throw r.error;
+        var lista = r.data || [];
+        if (!lista.length){
+          select.innerHTML = '<option value="">Nenhum condomínio disponível</option>';
+          document.getElementById('morador-sem-condominio').style.display = 'block';
+          return;
+        }
+        select.innerHTML = '<option value="">Selecione...</option>' + lista.map(function(c){
+          return '<option value="' + c.id + '">' + esc(c.nome) + '</option>';
+        }).join('');
+        condominiosCarregados = true;
+      } catch (err) {
+        select.innerHTML = '<option value="">Erro ao carregar</option>';
+        malotToast(malotErroMsg(err), 'erro');
+      }
+    }
+    var empresasCarregadas = false;
+    async function carregarEmpresasParaColaborador(){
+      if (empresasCarregadas) return;
+      var select = document.getElementById('f-empresa-colaborador');
+      try {
+        var r = await malote.rpc('listar_empresas_para_colaborador');
+        if (r.error) throw r.error;
+        var lista = r.data || [];
+        if (!lista.length){
+          select.innerHTML = '<option value="">Nenhuma empresa disponível</option>';
+          document.getElementById('colaborador-sem-empresa').style.display = 'block';
+          return;
+        }
+        select.innerHTML = '<option value="">Selecione...</option>' + lista.map(function(e){
+          return '<option value="' + e.id + '">' + esc(e.nome) + '</option>';
+        }).join('');
+        empresasCarregadas = true;
+      } catch (err) {
+        select.innerHTML = '<option value="">Erro ao carregar</option>';
+        malotToast(malotErroMsg(err), 'erro');
+      }
+    }
+    document.getElementById('f-empresa-colaborador').addEventListener('change', async function(){
+      var unidadeSelect = document.getElementById('f-unidade-colaborador');
+      var setorSelect = document.getElementById('f-setor-colaborador');
+      setorSelect.innerHTML = '<option value="">Selecione a unidade primeiro</option>';
+      if (!this.value){ unidadeSelect.innerHTML = '<option value="">Selecione a empresa primeiro</option>'; return; }
+      unidadeSelect.innerHTML = '<option value="">Carregando...</option>';
+      try {
+        var r = await malote.rpc('listar_unidades_para_colaborador', { p_condominio_id: this.value });
+        if (r.error) throw r.error;
+        var lista = r.data || [];
+        unidadeSelect.innerHTML = '<option value="">Selecione...</option>' + lista.map(function(u){
+          return '<option value="' + u.id + '">' + esc(u.nome) + '</option>';
+        }).join('');
+      } catch (err) {
+        unidadeSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+        malotToast(malotErroMsg(err), 'erro');
+      }
+    });
+    async function carregarSetoresColaborador(unidadeId){
+      var setorSelect = document.getElementById('f-setor-colaborador');
+      if (!unidadeId){ setorSelect.innerHTML = '<option value="">Selecione a unidade primeiro</option>'; return; }
+      setorSelect.innerHTML = '<option value="">Carregando...</option>';
+      try {
+        var r = await malote.rpc('listar_setores_para_colaborador', { p_unidade_id: unidadeId });
+        if (r.error) throw r.error;
+        var lista = r.data || [];
+        setorSelect.innerHTML = '<option value="">Nenhum / não sei</option>' + lista.map(function(s){
+          return '<option value="' + s.id + '">' + esc(s.nome) + '</option>';
+        }).join('');
+      } catch (err) {
+        setorSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+      }
+    }
+    document.getElementById('f-unidade-colaborador').addEventListener('change', function(){
+      carregarSetoresColaborador(this.value);
+    });
+
+    // ---------- pré-cadastro por nome ----------
+    // Quando a empresa já cadastrou esse colaborador antes (pra já poder registrar
+    // encomendas pra ele), basta digitar o mesmo nome aqui que a unidade e o setor
+    // são preenchidos sozinhos — evita cadastro duplicado e mantém o histórico já
+    // registrado pra essa pessoa.
+    var sugestoesColaboradorAtuais = [];
+    var buscaColaboradorTimer = null;
+
+    function limparPreCadastroColaborador(){
+      document.getElementById('lista-colaboradores-pre-cadastro').innerHTML = '';
+      document.getElementById('colaborador-pre-cadastro-hint').style.display = 'none';
+      sugestoesColaboradorAtuais = [];
+    }
+
+    async function buscarPreCadastroColaborador(nomeDigitado){
+      var empresaId = document.getElementById('f-empresa-colaborador').value;
+      var datalist = document.getElementById('lista-colaboradores-pre-cadastro');
+      if (!empresaId || !nomeDigitado || nomeDigitado.trim().length < 3){
+        datalist.innerHTML = '';
+        sugestoesColaboradorAtuais = [];
+        return;
+      }
+      try {
+        var r = await malote.rpc('colaborador_buscar_pre_cadastro', { p_condominio_id: empresaId, p_nome: nomeDigitado.trim() });
+        if (r.error) throw r.error;
+        sugestoesColaboradorAtuais = r.data || [];
+        datalist.innerHTML = sugestoesColaboradorAtuais.map(function(c){
+          return '<option value="' + esc(c.nome) + '">';
+        }).join('');
+      } catch (err) {
+        // busca de pré-cadastro é só uma conveniência: se falhar, segue o cadastro manual normalmente
+      }
+    }
+
+    async function aplicarPreCadastroSeEncontrado(nomeDigitado){
+      var nomeNormalizado = nomeDigitado.trim().toLowerCase();
+      var encontrados = sugestoesColaboradorAtuais.filter(function(c){
+        return c.nome.trim().toLowerCase() === nomeNormalizado;
+      });
+      var hint = document.getElementById('colaborador-pre-cadastro-hint');
+      if (encontrados.length !== 1){
+        hint.style.display = 'none';
+        return;
+      }
+      var match = encontrados[0];
+      var unidadeSelect = document.getElementById('f-unidade-colaborador');
+      if (unidadeSelect.querySelector('option[value="' + match.unidade_id + '"]')){
+        unidadeSelect.value = match.unidade_id;
+        await carregarSetoresColaborador(match.unidade_id);
+        var setorSelect = document.getElementById('f-setor-colaborador');
+        if (match.setor_id && setorSelect.querySelector('option[value="' + match.setor_id + '"]')){
+          setorSelect.value = match.setor_id;
+        }
+        hint.style.display = 'block';
+      }
+    }
+
+    document.getElementById('f-nome-colaborador').addEventListener('input', function(){
+      var valor = this.value;
+      document.getElementById('colaborador-pre-cadastro-hint').style.display = 'none';
+      clearTimeout(buscaColaboradorTimer);
+      buscaColaboradorTimer = setTimeout(function(){ buscarPreCadastroColaborador(valor); }, 350);
+    });
+    document.getElementById('f-nome-colaborador').addEventListener('change', function(){
+      aplicarPreCadastroSeEncontrado(this.value);
+    });
+    document.getElementById('f-empresa-colaborador').addEventListener('change', limparPreCadastroColaborador);
+
+    async function carregarCondominiosSemDono(){
+      if (condominiosSemDonoCarregados) return;
+      var campo = document.getElementById('campo-condominio-existente');
+      var select = document.getElementById('f-condominio-existente');
+      try {
+        var r = await malote.rpc('listar_condominios_sem_dono');
+        if (r.error) throw r.error;
+        var lista = r.data || [];
+        if (!lista.length){
+          // caso comum: ninguém pré-cadastrado esperando — nem mostra a opção,
+          // pra não confundir quem tá se cadastrando pela primeira vez.
+          campo.style.display = 'none';
+          return;
+        }
+        select.innerHTML = '<option value="">Não, vou cadastrar um novo</option>' + lista.map(function(c){
+          return '<option value="' + c.id + '">' + esc(c.nome) + '</option>';
+        }).join('');
+        campo.style.display = 'block';
+        condominiosSemDonoCarregados = true;
+      } catch (err) {
+        // falha silenciosa: pior caso, a pessoa cadastra um condomínio novo
+        // normalmente (fluxo de sempre continua funcionando).
+        campo.style.display = 'none';
+      }
+    }
+    document.getElementById('f-condominio-existente').addEventListener('change', function(){
+      document.getElementById('campos-cliente-novo').style.display = this.value ? 'none' : 'block';
+    });
+
+    function esc(s){ var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+    function atualizarHintValorCadastro(){
+      var apartamentos = parseInt(document.getElementById('f-apartamentos').value, 10);
+      var el = document.getElementById('cadastro-valor-hint');
+      if (isNaN(apartamentos) || apartamentos < 1){
+        el.innerHTML = 'Mensalidade: <strong>R$ 59,90/mês</strong> (até 60 apartamentos).';
+        return;
+      }
+      var valor = malotCalcularMensalidade(apartamentos);
+      if (apartamentos > 60){
+        el.innerHTML = 'Mensalidade estimada: <strong>' + malotFormatarReais(valor) + '/mês</strong> (60 inclusos + ' + (apartamentos - 60) + ' apto(s) a R$ 0,99 cada).';
+      } else {
+        el.innerHTML = 'Mensalidade estimada: <strong>' + malotFormatarReais(valor) + '/mês</strong> (até 60 apartamentos).';
+      }
+    }
+    document.getElementById('f-apartamentos').addEventListener('input', atualizarHintValorCadastro);
+
+    function atualizarHintValorCadastroEmpresa(){
+      var qtd = parseInt(document.getElementById('f-qtd-colaboradores-empresa').value, 10);
+      var el = document.getElementById('cadastro-empresa-valor-hint');
+      if (isNaN(qtd) || qtd < 1){
+        el.innerHTML = 'Plano Empresarial: <strong>R$ 349,00/mês</strong> (até 500 colaboradores).';
+        return;
+      }
+      var valor = malotCalcularMensalidadeEmpresarial(qtd);
+      el.innerHTML = 'Mensalidade estimada: <strong>' + malotFormatarReais(valor) + '/mês</strong> pra ' + qtd + ' colaborador(es).';
+    }
+    document.getElementById('f-qtd-colaboradores-empresa').addEventListener('input', atualizarHintValorCadastroEmpresa);
+
+    // Busca o endereço pelo CEP (ViaCEP, gratuito, sem chave). Só preenche o
+    // que a pessoa ainda não tiver digitado — nunca sobrescreve o que ela já
+    // escreveu na mão. Se der erro (CEP inválido, sem internet), não trava
+    // nada: ela pode continuar preenchendo manualmente.
+    document.getElementById('f-cep').addEventListener('blur', async function(){
+      var cep = this.value.replace(/\D/g, '');
+      if (cep.length !== 8) return;
+      this.value = cep.replace(/(\d{5})(\d{3})/, '$1-$2');
+      try {
+        var resp = await fetch('https://viacep.com.br/ws/' + cep + '/json/');
+        var dados = await resp.json();
+        if (!dados.erro){
+          if (!document.getElementById('f-endereco').value.trim()) document.getElementById('f-endereco').value = dados.logradouro || '';
+          if (!document.getElementById('f-bairro').value.trim()) document.getElementById('f-bairro').value = dados.bairro || '';
+          if (!document.getElementById('f-cidade').value.trim()) document.getElementById('f-cidade').value = dados.localidade || '';
+          if (dados.uf) document.getElementById('f-uf').value = dados.uf;
+        }
+      } catch (e) { /* sem internet ou serviço fora do ar: segue preenchimento manual */ }
+    });
+
+    document.getElementById('f-cep-empresa').addEventListener('blur', async function(){
+      var cep = this.value.replace(/\D/g, '');
+      if (cep.length !== 8) return;
+      this.value = cep.replace(/(\d{5})(\d{3})/, '$1-$2');
+      try {
+        var resp = await fetch('https://viacep.com.br/ws/' + cep + '/json/');
+        var dados = await resp.json();
+        if (!dados.erro){
+          if (!document.getElementById('f-endereco-empresa').value.trim()) document.getElementById('f-endereco-empresa').value = dados.logradouro || '';
+          if (!document.getElementById('f-bairro-empresa').value.trim()) document.getElementById('f-bairro-empresa').value = dados.bairro || '';
+          if (!document.getElementById('f-cidade-empresa').value.trim()) document.getElementById('f-cidade-empresa').value = dados.localidade || '';
+          if (dados.uf) document.getElementById('f-uf-empresa').value = dados.uf;
+        }
+      } catch (e) { /* sem internet ou serviço fora do ar: segue preenchimento manual */ }
+    });
+
+    function coletarEnderecoCadastro(){
+      return {
+        cep: document.getElementById('f-cep').value.trim(),
+        endereco: document.getElementById('f-endereco').value.trim(),
+        numero: document.getElementById('f-numero').value.trim(),
+        bairro: document.getElementById('f-bairro').value.trim(),
+        cidade: document.getElementById('f-cidade').value.trim(),
+        uf: document.getElementById('f-uf').value
+      };
+    }
+
+    async function finalizarCadastroCliente(userId, nomeCondominio, qtdBlocos, qtdApartamentos, condominioSelecionadoId, endereco){
+      // se o admin já cadastrou esse condomínio com esse mesmo e-mail antes,
+      // "reivindica" esse cadastro em vez de criar um novo (mantém o nome e
+      // o parceiro que o admin já tiver atribuído).
+      var claim = await malote.rpc('reivindicar_condominio');
+      if (!claim.error && claim.data && claim.data.id){
+        var codigoJaVinculado = malotCodigoIndicacaoSalvo();
+        if (codigoJaVinculado){
+          try { await malote.rpc('vincular_parceiro_signup', { p_codigo: codigoJaVinculado }); } catch (e) { /* ignora */ }
+          malotLimparCodigoIndicacao();
+        }
+        return;
+      }
+
+      // a pessoa escolheu, na lista, um condomínio que já pré-cadastramos —
+      // reivindica esse em vez de criar um novo (evita duplicar).
+      if (condominioSelecionadoId){
+        var claimId = await malote.rpc('reivindicar_condominio_por_id', { p_condominio_id: condominioSelecionadoId });
+        if (claimId.error) throw claimId.error;
+        var codigoJaVinculado2 = malotCodigoIndicacaoSalvo();
+        if (codigoJaVinculado2){
+          try { await malote.rpc('vincular_parceiro_signup', { p_codigo: codigoJaVinculado2 }); } catch (e) { /* ignora */ }
+          malotLimparCodigoIndicacao();
+        }
+        return;
+      }
+
+      // cria a linha do condomínio (já com blocos/apartamentos, pra
+      // mensalidade já sair calculada certa desde o primeiro pagamento) —
+      // bloqueada, aguardando confirmação do pagamento — e, se houver
+      // código de indicação salvo, grava o vínculo (first-wins, cuidado do
+      // servidor via RPC).
+      var ins = await malote.from('condominios').insert({
+        user_id: userId, nome: nomeCondominio,
+        qtd_blocos: qtdBlocos, qtd_apartamentos: qtdApartamentos,
+        cep: (endereco && endereco.cep) || null, endereco: (endereco && endereco.endereco) || null,
+        numero: (endereco && endereco.numero) || null, bairro: (endereco && endereco.bairro) || null,
+        cidade: (endereco && endereco.cidade) || null, uf: (endereco && endereco.uf) || null,
+        bloqueado: true, bloqueado_motivo: 'Aguardando confirmação do pagamento'
+      }).select().single();
+      if (ins.error && ins.error.code !== '23505') throw ins.error; // 23505 = já existe (idempotência)
+
+      var codigo = malotCodigoIndicacaoSalvo();
+      if (codigo){
+        try { await malote.rpc('vincular_parceiro_signup', { p_codigo: codigo }); }
+        catch (e) { /* código inválido/expirado: segue como venda direta */ }
+        malotLimparCodigoIndicacao();
+      }
+    }
+
+    async function finalizarCadastroEmpresa(nome, razaoSocial, cnpj, nomeUnidade, endereco, qtdColaboradores){
+      var r = await malote.rpc('cadastrar_empresa_self', {
+        p_nome: nome, p_razao_social: razaoSocial, p_cnpj: cnpj,
+        p_cep: (endereco && endereco.cep) || null, p_endereco: (endereco && endereco.endereco) || null,
+        p_numero: (endereco && endereco.numero) || null, p_bairro: (endereco && endereco.bairro) || null,
+        p_cidade: (endereco && endereco.cidade) || null, p_uf: (endereco && endereco.uf) || null,
+        p_nome_primeira_unidade: nomeUnidade,
+        p_qtd_colaboradores_contratados: qtdColaboradores || null
+      });
+      if (r.error) throw r.error;
+      return r.data;
+    }
+
+    async function finalizarCadastroParceiro(nomeParceiro){
+      var r = await malote.rpc('cadastrar_parceiro_self', { p_nome: nomeParceiro });
+      if (r.error) throw r.error;
+      return r.data;
+    }
+
+    document.getElementById('btn-criar').addEventListener('click', async function(){
+      var email = document.getElementById('f-email').value.trim();
+      var senha = document.getElementById('f-senha').value;
+      var confirmarSenha = document.getElementById('f-confirmar-senha').value;
+      if (!email || !senha || !confirmarSenha){ malotToast('Preencha e-mail, senha e confirmação de senha.', 'erro'); return; }
+      if (senha.length < 6){ malotToast('A senha precisa ter pelo menos 6 caracteres.', 'erro'); return; }
+      if (senha !== confirmarSenha){ malotToast('As senhas não coincidem.', 'erro'); return; }
+
+      var btn = this;
+
+      if (tipoConta === 'colaborador'){
+        var empresaId = document.getElementById('f-empresa-colaborador').value;
+        var unidadeId = document.getElementById('f-unidade-colaborador').value;
+        var setorId = document.getElementById('f-setor-colaborador').value || null;
+        var nomeColaborador = document.getElementById('f-nome-colaborador').value.trim();
+        var whatsappColaborador = document.getElementById('f-whatsapp-colaborador').value.trim();
+        if (!empresaId){ malotToast('Selecione a sua empresa.', 'erro'); return; }
+        if (!unidadeId){ malotToast('Selecione a sua unidade.', 'erro'); return; }
+        if (!nomeColaborador){ malotToast('Preencha seu nome.', 'erro'); return; }
+
+        btn.disabled = true; btn.textContent = 'Criando...';
+        try {
+          var sc = await malote.auth.signUp({ email: email, password: senha });
+          if (sc.error) throw sc.error;
+
+          if (sc.data.session && sc.data.user){
+            var rc = await malote.rpc('colaborador_cadastrar_ou_vincular', {
+              p_condominio_id: empresaId, p_unidade_id: unidadeId, p_setor_id: setorId,
+              p_nome: nomeColaborador, p_whatsapp: whatsappColaborador
+            });
+            if (rc.error) throw rc.error;
+            malotToast('Conta criada!', 'ok');
+            location.href = '/parceiros/portal-colaborador.html';
+          } else {
+            try {
+              localStorage.setItem('malote_colaborador_pendente_condominio', empresaId);
+              localStorage.setItem('malote_colaborador_pendente_unidade', unidadeId);
+              localStorage.setItem('malote_colaborador_pendente_setor', setorId || '');
+              localStorage.setItem('malote_colaborador_pendente_nome', nomeColaborador);
+              localStorage.setItem('malote_colaborador_pendente_whatsapp', whatsappColaborador);
+            } catch(e){}
+            document.getElementById('passo-conta').style.display = 'none';
+            document.getElementById('passo-confirme').style.display = 'block';
+          }
+        } catch (err) {
+          malotToast(malotErroMsg(err), 'erro');
+        } finally {
+          btn.disabled = false; btn.textContent = 'Criar conta';
+        }
+        return;
+      }
+
+      if (tipoConta === 'empresa'){
+        var nomeEmpresa = document.getElementById('f-nome-empresa').value.trim();
+        var razaoSocial = document.getElementById('f-razao-social').value.trim();
+        var cnpj = document.getElementById('f-cnpj').value.trim();
+        var nomeUnidade = document.getElementById('f-nome-unidade').value.trim();
+        var qtdColaboradoresEmpresa = parseInt(document.getElementById('f-qtd-colaboradores-empresa').value, 10);
+        var enderecoEmpresa = {
+          cep: document.getElementById('f-cep-empresa').value.trim(),
+          endereco: document.getElementById('f-endereco-empresa').value.trim(),
+          numero: document.getElementById('f-numero-empresa').value.trim(),
+          bairro: document.getElementById('f-bairro-empresa').value.trim(),
+          cidade: document.getElementById('f-cidade-empresa').value.trim(),
+          uf: document.getElementById('f-uf-empresa').value
+        };
+        if (!nomeEmpresa){ malotToast('Preencha o nome fantasia da empresa.', 'erro'); return; }
+        if (isNaN(qtdColaboradoresEmpresa) || qtdColaboradoresEmpresa < 1){ malotToast('Digite a quantidade de colaboradores.', 'erro'); return; }
+
+        btn.disabled = true; btn.textContent = 'Criando...';
+        try {
+          var se = await malote.auth.signUp({ email: email, password: senha });
+          if (se.error) throw se.error;
+
+          if (se.data.session && se.data.user){
+            await finalizarCadastroEmpresa(nomeEmpresa, razaoSocial, cnpj, nomeUnidade, enderecoEmpresa, qtdColaboradoresEmpresa);
+            malotToast('Conta criada! Abrindo pagamento...', 'ok');
+            // manda direto pro pagamento do Plano Empresarial — a quantidade
+            // já foi informada aqui no cadastro, então não faz sentido pedir
+            // de novo no painel. Se o pagamento não puder ser iniciado por
+            // qualquer motivo, cai no painel normalmente: lá tem a mesma
+            // opção de contratar (com a quantidade já pré-preenchida).
+            try {
+              var respPag = await malote.functions.invoke('mp-criar-pagamento', {
+                body: { origem: window.location.origin }
+              });
+              if (!respPag.error && respPag.data && respPag.data.url){
+                location.href = respPag.data.url;
+                return;
+              }
+            } catch (ePag) { /* segue pro painel abaixo */ }
+            location.href = '/empresa/painel.html';
+          } else {
+            try {
+              localStorage.setItem('malote_nome_empresa_pendente', nomeEmpresa);
+              localStorage.setItem('malote_razao_social_pendente', razaoSocial);
+              localStorage.setItem('malote_cnpj_pendente', cnpj);
+              localStorage.setItem('malote_nome_unidade_pendente', nomeUnidade);
+              localStorage.setItem('malote_endereco_empresa_pendente', JSON.stringify(enderecoEmpresa));
+              localStorage.setItem('malote_qtd_colaboradores_empresa_pendente', String(qtdColaboradoresEmpresa));
+            } catch(e){}
+            document.getElementById('passo-conta').style.display = 'none';
+            document.getElementById('passo-confirme').style.display = 'block';
+          }
+        } catch (err) {
+          malotToast(malotErroMsg(err), 'erro');
+        } finally {
+          btn.disabled = false; btn.textContent = 'Criar conta';
+        }
+        return;
+      }
+
+      if (tipoConta === 'parceiro'){
+        var nomeParceiro = document.getElementById('f-nome-parceiro').value.trim();
+        if (!nomeParceiro){ malotToast('Preencha seu nome.', 'erro'); return; }
+
+        btn.disabled = true; btn.textContent = 'Criando...';
+        try {
+          var sp = await malote.auth.signUp({ email: email, password: senha });
+          if (sp.error) throw sp.error;
+
+          if (sp.data.session && sp.data.user){
+            await finalizarCadastroParceiro(nomeParceiro);
+            malotToast('Conta criada!', 'ok');
+            location.href = '/parceiros/portal-parceiro.html';
+          } else {
+            // confirmação de e-mail exigida: guarda o nome pra usar no
+            // primeiro login (portal-parceiro.html completa o cadastro
+            // sozinho lendo esse valor do localStorage).
+            try { localStorage.setItem('malote_nome_parceiro_pendente', nomeParceiro); } catch(e){}
+            document.getElementById('passo-conta').style.display = 'none';
+            document.getElementById('passo-confirme').style.display = 'block';
+          }
+        } catch (err) {
+          malotToast(malotErroMsg(err), 'erro');
+        } finally {
+          btn.disabled = false; btn.textContent = 'Criar conta';
+        }
+        return;
+      }
+
+      if (tipoConta === 'morador'){
+        var condominioId = document.getElementById('f-condominio-morador').value;
+        var blocoMorador = document.getElementById('f-bloco-morador').value.trim();
+        var aptoMorador = document.getElementById('f-apto-morador').value.trim();
+        var nomeMorador = document.getElementById('f-nome-morador').value.trim();
+        var whatsappMorador = document.getElementById('f-whatsapp-morador').value.trim();
+        if (!condominioId){ malotToast('Selecione o seu condomínio.', 'erro'); return; }
+        if (!aptoMorador){ malotToast('Preencha o apartamento.', 'erro'); return; }
+        if (!nomeMorador){ malotToast('Preencha seu nome.', 'erro'); return; }
+
+        btn.disabled = true; btn.textContent = 'Criando...';
+        try {
+          var sm = await malote.auth.signUp({ email: email, password: senha });
+          if (sm.error) throw sm.error;
+
+          if (sm.data.session && sm.data.user){
+            var rm = await malote.rpc('morador_cadastrar_ou_vincular', {
+              p_condominio_id: condominioId, p_bloco: blocoMorador, p_apto: aptoMorador,
+              p_nome: nomeMorador, p_whatsapp: whatsappMorador
+            });
+            if (rm.error) throw rm.error;
+            malotToast('Conta criada!', 'ok');
+            location.href = '/parceiros/portal-morador.html';
+          } else {
+            // confirmação de e-mail exigida: guarda os dados pra completar
+            // o vínculo no primeiro login (portal-morador.html lê isso).
+            try {
+              localStorage.setItem('malote_morador_pendente_condominio', condominioId);
+              localStorage.setItem('malote_morador_pendente_bloco', blocoMorador);
+              localStorage.setItem('malote_morador_pendente_apto', aptoMorador);
+              localStorage.setItem('malote_morador_pendente_nome', nomeMorador);
+              localStorage.setItem('malote_morador_pendente_whatsapp', whatsappMorador);
+            } catch(e){}
+            document.getElementById('passo-conta').style.display = 'none';
+            document.getElementById('passo-confirme').style.display = 'block';
+          }
+        } catch (err) {
+          malotToast(malotErroMsg(err), 'erro');
+        } finally {
+          btn.disabled = false; btn.textContent = 'Criar conta';
+        }
+        return;
+      }
+
+      var condominioExistenteEl = document.getElementById('f-condominio-existente');
+      var condominioSelecionadoId = (condominioExistenteEl.closest('#campo-condominio-existente').style.display !== 'none') ? condominioExistenteEl.value : '';
+      var nome = document.getElementById('f-nome').value.trim();
+      var blocos = parseInt(document.getElementById('f-blocos').value, 10);
+      var apartamentos = parseInt(document.getElementById('f-apartamentos').value, 10);
+      var endereco = coletarEnderecoCadastro();
+      if (!condominioSelecionadoId){
+        if (!nome){ malotToast('Preencha o nome do condomínio.', 'erro'); return; }
+        if (isNaN(blocos) || blocos < 1) blocos = 1;
+        if (isNaN(apartamentos) || apartamentos < 1){ malotToast('Digite a quantidade de apartamentos.', 'erro'); return; }
+        if (!endereco.cep || !endereco.endereco || !endereco.numero || !endereco.cidade || !endereco.uf){
+          malotToast('Preencha o endereço completo (CEP, endereço, número, cidade e UF).', 'erro'); return;
+        }
+      }
+
+      btn.disabled = true; btn.textContent = 'Criando...';
+      try {
+        var { data, error } = await malote.auth.signUp({ email: email, password: senha });
+        if (error) throw error;
+
+        if (data.session && data.user){
+          await finalizarCadastroCliente(data.user.id, nome, blocos, apartamentos, condominioSelecionadoId, endereco);
+          malotToast('Conta criada!', 'ok');
+          location.href = '/sindico/painel.html';
+        } else {
+          // confirmação de e-mail exigida: guarda os dados pra usar no
+          // primeiro login (o vínculo com o parceiro só é lido do
+          // localStorage, então ele persiste até lá; os dados do
+          // condomínio guardamos do mesmo jeito).
+          try {
+            if (condominioSelecionadoId){
+              localStorage.setItem('malote_condominio_selecionado_pendente', condominioSelecionadoId);
+            } else {
+              localStorage.setItem('malote_nome_condominio_pendente', nome);
+              localStorage.setItem('malote_blocos_condominio_pendente', String(blocos));
+              localStorage.setItem('malote_apartamentos_condominio_pendente', String(apartamentos));
+              localStorage.setItem('malote_endereco_condominio_pendente', JSON.stringify(endereco));
+            }
+          } catch(e){}
+          document.getElementById('passo-conta').style.display = 'none';
+          document.getElementById('passo-confirme').style.display = 'block';
+        }
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Criar conta';
+      }
+    });
+  </script>
+  <div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="/parceiros/assets/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>

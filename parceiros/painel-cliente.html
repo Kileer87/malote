@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redirecionando — Malote</title>
+<script>
+  // O painel do síndico mudou de endereço (agora fica em /sindico/painel.html,
+  // fora da pasta /parceiros/). Este arquivo fica aqui só como redirecionamento
+  // pra não quebrar links antigos (favoritos, retorno de pagamento, PWA
+  // instalado etc.) — preserva a query string (ex: ?pagamento=sucesso).
+  location.replace('/sindico/painel.html' + window.location.search);
+</script>
+</head>
+<body>
+  <p>Redirecionando para o novo endereço do painel...</p>
+  <p><a href="/sindico/painel.html">Clique aqui se não for redirecionado automaticamente.</a></p>
+</body>
+</html>

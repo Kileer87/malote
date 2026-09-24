@@ -1,0 +1,200 @@
+:root{
+  --canvas:#E9EFFA; --paper:#FFFFFF; --paper-2:#F3F6FC;
+  --ink:#0E1B33; --ink-muted:#5B6B85; --border:rgba(14,27,51,0.10);
+  --accent:#EF6B2C; --accent-ink:#FFFFFF;
+  --chart-2:#2A78D6;
+  --ok:#3FA968; --ok-bg:#E7F5EC;
+  --warn:#D8571E; --warn-bg:#FCE6D8;
+  --danger:#D64545; --danger-bg:#FBE4E1;
+  --shadow:0 1px 2px rgba(14,27,51,.08), 0 6px 20px rgba(14,27,51,.06);
+  --credit-bg:#0E1B33;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --canvas:#0E1B33; --paper:#152645; --paper-2:#1B2E52;
+    --ink:#F4F7FD; --ink-muted:#AFBBD6; --border:rgba(244,247,253,.14);
+    --accent:#EF6B2C; --accent-ink:#FFFFFF;
+    --chart-2:#3987E5;
+    --ok:#6FCB93; --ok-bg:#1C3326;
+    --warn:#F0935E; --warn-bg:#3A2418;
+    --danger:#E68078; --danger-bg:#3A1F1C;
+    --credit-bg:#2A3E63;
+  }
+}
+:root[data-theme="dark"]{
+  --canvas:#0E1B33; --paper:#152645; --paper-2:#1B2E52;
+  --ink:#F4F7FD; --ink-muted:#AFBBD6; --border:rgba(244,247,253,.14);
+  --accent:#EF6B2C; --accent-ink:#FFFFFF;
+  --chart-2:#3987E5;
+  --credit-bg:#2A3E63;
+  --ok:#6FCB93; --ok-bg:#1C3326;
+  --warn:#F0935E; --warn-bg:#3A2418;
+  --danger:#E68078; --danger-bg:#3A1F1C;
+}
+*{ box-sizing:border-box; }
+body{
+  margin:0; background:var(--canvas); color:var(--ink); min-height:100vh; position:relative;
+  font-family:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,sans-serif;
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+/* marca d'água do Malote: a mesma logo do ícone do app, bem apagada, atrás
+   de todo o conteúdo — dá uma identidade visual sem competir com os cards. */
+body::before{
+  content:'';
+  position:fixed; inset:0; z-index:-1;
+  background-image:url('/icons/watermark-mark.png');
+  background-repeat:no-repeat;
+  background-position:center center;
+  background-size:min(88vw,88vh);
+  opacity:.10;
+  pointer-events:none;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) body::before{ background-image:url('/icons/watermark-mark-dark.png'); }
+}
+:root[data-theme="dark"] body::before{ background-image:url('/icons/watermark-mark-dark.png'); }
+h1,h2,h3{ font-family:'Fraunces',ui-serif,Georgia,serif; font-weight:700; text-wrap:balance; margin:0 0 4px; }
+.mono{ font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+a{ color:var(--accent); }
+
+.shell{ max-width:960px; margin:0 auto; padding:0 16px 60px; }
+.shell.narrow{ max-width:440px; }
+
+.topbar{
+  position:sticky; top:0; z-index:20; background:var(--canvas);
+  padding:22px 16px 16px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+}
+.brand{ display:flex; align-items:center; gap:10px; }
+.brand .word{ font-family:'Fraunces',ui-serif,Georgia,serif; font-weight:800; font-size:19px; letter-spacing:-.01em; }
+.brand .sub{ color:var(--ink-muted); font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+.brand-badge{
+  width:34px; height:34px; border-radius:9px; flex-shrink:0; display:block; object-fit:cover;
+}
+/* Iniciais do nome do condomínio/empresa, mostradas no lugar da foto de
+   perfil quando a conta ainda não cadastrou uma. Usada junto com
+   .brand-badge (que já define tamanho/formato), só acrescenta o "retrato". */
+.brand-badge-iniciais{
+  display:flex; align-items:center; justify-content:center;
+  background:var(--accent); color:#fff; font-weight:700; font-size:13px; letter-spacing:.02em;
+}
+.nav{ display:flex; gap:8px; flex-wrap:wrap; }
+.nav a{ text-decoration:none; color:var(--ink-muted); font-size:13.5px; padding:7px 12px; border-radius:999px; border:1px solid var(--border); }
+.nav a.active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+
+.card{ background:var(--paper); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); padding:22px; margin:18px 0; }
+.card h2{ font-size:18px; margin-bottom:4px; }
+.card .hint{ color:var(--ink-muted); font-size:13px; margin-bottom:16px; }
+
+.stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:18px 0; }
+.stat{ background:var(--paper); border:1px solid var(--border); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }
+.stat .num{ font-family:'Fraunces',serif; font-weight:800; font-size:26px; }
+.stat .lbl{ color:var(--ink-muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+.stat.alerta .num{ color:var(--danger); }
+
+.legenda-grafico{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:6px; font-size:12.5px; color:var(--ink-muted); }
+.legenda-grafico span{ display:inline-flex; align-items:center; gap:6px; }
+.legenda-grafico .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:12px; color:var(--ink-muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+.field input, .field select, .field textarea{
+  width:100%; background:var(--canvas); border:1px solid var(--border); border-radius:7px; padding:10px 12px; font-size:14.5px;
+  color:var(--ink); font-family:inherit;
+}
+.field .help{ font-size:12px; color:var(--ink-muted); margin-top:5px; }
+.campo-senha{ position:relative; }
+.campo-senha input{ padding-right:42px; }
+.campo-senha .btn-toggle-senha{
+  position:absolute; right:2px; top:0; bottom:0; width:38px;
+  background:none; border:none; cursor:pointer; color:var(--ink-muted);
+  display:flex; align-items:center; justify-content:center;
+}
+.campo-senha .btn-toggle-senha:hover{ color:var(--ink); }
+.campo-senha .btn-toggle-senha svg{ width:18px; height:18px; }
+.form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 16px; }
+.form-grid .full{ grid-column:1/-1; }
+@media (max-width:560px){ .form-grid{ grid-template-columns:1fr; } }
+
+button{ font-family:inherit; cursor:pointer; }
+.btn{ display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:11px 18px; border-radius:9px; font-size:14px; font-weight:600; border:1px solid transparent; text-decoration:none; }
+.btn-primary{ background:var(--accent); color:var(--accent-ink); }
+.btn-primary:hover{ filter:brightness(1.06); }
+.btn-outline{ background:transparent; border-color:var(--border); color:var(--ink); }
+.btn-outline:hover{ border-color:var(--accent); color:var(--accent); }
+.btn-sm{ padding:7px 12px; font-size:12.5px; }
+.btn-danger{ background:transparent; border-color:var(--danger); color:var(--danger); }
+.btn[disabled]{ opacity:.55; pointer-events:none; }
+.actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+
+table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+th{ text-align:left; color:var(--ink-muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; padding:8px 10px; border-bottom:1px solid var(--border); }
+td{ padding:10px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+tr:last-child td{ border-bottom:none; }
+.table-wrap{
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+  background:
+    linear-gradient(to right, var(--paper) 30%, rgba(255,255,255,0)) left,
+    linear-gradient(to left, var(--paper) 30%, rgba(255,255,255,0)) right,
+    linear-gradient(to right, rgba(0,0,0,.15), rgba(255,255,255,0)) left,
+    linear-gradient(to left, rgba(0,0,0,.15), rgba(255,255,255,0)) right;
+  background-repeat:no-repeat;
+  background-color:var(--paper);
+  background-size:24px 100%, 24px 100%, 10px 100%, 10px 100%;
+  background-attachment:local, local, scroll, scroll;
+}
+
+.badge{ display:inline-flex; align-items:center; padding:3px 10px; border-radius:999px; font-size:11.5px; font-weight:600; }
+.badge-ok{ background:var(--ok-bg); color:var(--ok); }
+.badge-warn{ background:var(--warn-bg); color:var(--warn); }
+.badge-danger{ background:var(--danger-bg); color:var(--danger); }
+.badge-muted{ background:var(--paper-2); color:var(--ink-muted); }
+
+.ref-box{ display:flex; align-items:center; gap:10px; background:var(--paper-2); border:1px solid var(--border); border-radius:9px; padding:11px 14px; flex-wrap:wrap; }
+.ref-box .link{ flex:1; min-width:180px; font-size:13px; word-break:break-all; }
+
+/* modal de confirmação genérico — usado hoje só no lembrete de retirada,
+   mas dá pra reaproveitar em qualquer outra ação que precise confirmar
+   antes de agir. */
+.malote-modal-backdrop{
+  position:fixed; inset:0; z-index:100; background:rgba(14,27,51,.55);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+.malote-modal{
+  background:var(--paper); border-radius:14px; box-shadow:var(--shadow);
+  padding:22px; max-width:380px; width:100%;
+}
+.malote-modal h3{ margin:0 0 8px; font-family:'Fraunces',ui-serif,Georgia,serif; font-weight:700; font-size:18px; }
+.malote-modal p{ margin:0 0 18px; color:var(--ink-muted); font-size:14px; line-height:1.5; }
+.malote-modal .actions{ margin-top:0; justify-content:flex-end; }
+
+#toast{
+  position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(20px); opacity:0;
+  background:var(--ink); color:var(--canvas); padding:11px 18px; border-radius:9px; font-size:13.5px;
+  box-shadow:var(--shadow); transition:.2s; pointer-events:none; z-index:80; max-width:90vw; text-align:center;
+}
+#toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.cq-credit{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  width:fit-content; margin:28px auto 22px;
+  background:var(--credit-bg); border:1px solid rgba(255,255,255,.14); border-radius:9px;
+  padding:6px 10px; box-shadow:var(--shadow); opacity:.82; transition:opacity .15s;
+  text-decoration:none;
+}
+.cq-credit:hover{ opacity:1; }
+.cq-credit span{ font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:#AFBBD6; }
+.cq-credit img{ display:block; height:18px; width:auto; }
+@media (max-width:480px){ .cq-credit{ padding:5px 8px; } .cq-credit span{ display:none; } .cq-credit img{ height:15px; } }
+
+/* o gráfico de vendas por mês é um SVG de largura fixa (760) que encolhe pra
+   caber no cartão — em telas estreitas isso deixa os 12 rótulos de mês
+   ilegíveis, então some com 2 a cada 3 e deixa só um a cada trimestre. */
+@media (max-width:640px){
+  .chart-mes[data-mod="1"], .chart-mes[data-mod="2"]{ display:none; }
+}
+
+.empty{ color:var(--ink-muted); font-size:13.5px; padding:20px 0; text-align:center; }
+.spinner{ width:15px; height:15px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent); animation:spin .8s linear infinite; display:inline-block; }
+@keyframes spin{ to{ transform:rotate(360deg); } }
+.center-loading{ display:flex; align-items:center; justify-content:center; gap:8px; padding:40px 0; color:var(--ink-muted); font-size:13.5px; }

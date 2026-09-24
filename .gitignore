@@ -1,0 +1,14 @@
+# Cópia espelhada usada só pro deploy manual (Netlify Drop) — é gerada a
+# partir dos mesmos arquivos daqui, então não faz sentido versionar duas
+# vezes o mesmo conteúdo.
+_deploy_site/
+
+# Material de apoio (prints, rascunhos, apresentação, vídeo de marketing) —
+# não é código do sistema.
+Claude outputs/
+Apresentacoes/
+apresentacao/
+marketing/
+
+# Arquivos já marcados para exclusão, mantidos só até a limpeza final.
+parceiros/_to_delete/

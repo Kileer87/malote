@@ -1,0 +1,1346 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Painel da empresa — Malote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/parceiros/assets/estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-badge" id="topbar-brand-badge" src="/icons/icon-192.png" alt="Malote">
+      <div><div class="word">Malote</div><div class="sub">Empresarial</div></div>
+    </div>
+    <div class="nav">
+      <a href="#" class="active" data-aba="visao">Visão geral</a>
+      <a href="#" data-aba="unidades" data-admin-only="1" style="display:none;">Unidades</a>
+      <a href="#" data-aba="setores" data-admin-only="1" style="display:none;">Setores</a>
+      <a href="#" data-aba="colaboradores">Colaboradores</a>
+      <a href="#" data-aba="portaria" data-admin-only="1" style="display:none;">Portaria</a>
+      <a href="#" data-aba="encomendas">Encomendas</a>
+      <a href="#" data-aba="dashboard">Dashboard</a>
+      <a href="contratar-plano.html" id="nav-plano" data-admin-only="1" style="display:none;">Plano</a>
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotVoltar('../index.html')">Leitor de Etiqueta</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotSair()">Sair</button>
+    </div>
+  </div>
+
+  <div class="shell">
+    <div id="carregando" class="center-loading"><span class="spinner"></span> Carregando...</div>
+
+    <div id="passo-finalizando" class="card" style="display:none;text-align:center;">
+      <p><span class="spinner"></span> Finalizando o cadastro da sua empresa...</p>
+    </div>
+
+    <div id="erro-vinculo" class="card" style="display:none;text-align:center;">
+      <h2>Não encontramos sua empresa</h2>
+      <p class="hint">Alguma coisa deu errado ao vincular sua conta a uma empresa. Tente se cadastrar de novo.</p>
+      <a class="btn btn-primary" href="/parceiros/cadastro.html" style="width:100%;">Refazer cadastro</a>
+    </div>
+
+    <div id="conteudo" style="display:none;">
+
+      <div id="painel-bloqueado" class="card" style="display:none;">
+        <div id="bloqueado-pagar" style="display:none;">
+          <h2 style="margin-bottom:4px;">Ative seu Plano Empresarial</h2>
+          <p class="hint">Seu cadastro foi criado, mas o acesso ainda não está ativo.</p>
+
+          <div id="ativacao-passo-calculo">
+            <div class="field">
+              <label>Quantos colaboradores sua empresa terá?</label>
+              <input type="number" id="ativacao-qtd-colaboradores" min="1" step="1" placeholder="Ex: 650">
+            </div>
+            <p class="hint" id="ativacao-valor-hint" style="margin-top:-4px;font-size:16px;">Valor mensal: <strong>—</strong></p>
+            <div class="actions">
+              <button type="button" class="btn btn-primary" id="btn-ativacao-ver-resumo" style="width:100%;">Contratar Plano Empresarial</button>
+            </div>
+          </div>
+
+          <div id="ativacao-passo-resumo" style="display:none;">
+            <div class="table-wrap">
+              <table>
+                <tbody>
+                  <tr><td>Plano</td><td><strong>Plano Empresarial</strong></td></tr>
+                  <tr><td>Quantidade de colaboradores</td><td id="ativacao-resumo-qtd">—</td></tr>
+                  <tr><td>Valor mensal</td><td id="ativacao-resumo-valor">—</td></tr>
+                  <tr><td>Recursos incluídos</td><td>Cadastro de unidades e setores, colaboradores dentro da quantidade contratada, controle de encomendas por unidade/setor/colaborador, notificação automática de chegada, portal do colaborador e histórico completo de entregas e retiradas.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-primary" id="btn-ativacao-confirmar" style="width:100%;">Confirmar e ir para o pagamento</button>
+            </div>
+            <p class="hint" style="margin-top:10px;margin-bottom:0;text-align:center;"><a href="#" id="ativacao-link-editar-quantidade">Editar quantidade</a></p>
+          </div>
+
+          <p class="hint" style="margin-top:6px;">Liberação automática assim que o pagamento for aprovado — normalmente na hora.</p>
+          <div class="actions">
+            <button type="button" class="btn btn-outline" id="btn-verificar-liberacao-empresa" style="width:100%;">Já paguei, verificar liberação</button>
+          </div>
+        </div>
+        <div id="bloqueado-sem-permissao-wrap" style="display:none;text-align:center;">
+          <h2>O acesso ainda não está ativo</h2>
+          <p class="hint" id="bloqueado-motivo"></p>
+        </div>
+      </div>
+
+      <!-- VISÃO GERAL -->
+      <div id="aba-visao">
+        <div class="stat-grid">
+          <div class="stat"><div class="num" id="stat-unidades">—</div><div class="lbl">Unidades</div></div>
+          <div class="stat"><div class="num" id="stat-setores">—</div><div class="lbl">Setores</div></div>
+          <div class="stat"><div class="num" id="stat-colaboradores">—</div><div class="lbl">Colaboradores</div></div>
+          <div class="stat"><div class="num" id="stat-aguardando">—</div><div class="lbl">Encomendas aguardando</div></div>
+        </div>
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Por unidade</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Unidade</th><th>Equipe</th><th>Aguardando</th></tr></thead>
+              <tbody id="tbl-resumo-unidades"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="resumo-unidades-vazio" style="display:none;">Cadastre uma unidade pra começar.</div>
+        </div>
+      </div>
+
+      <!-- UNIDADES -->
+      <div id="aba-unidades" style="display:none;">
+        <div class="card">
+          <h2 id="un-form-titulo">Nova unidade</h2>
+          <input type="hidden" id="un-editando-id" value="">
+          <div class="form-grid">
+            <div class="field"><label>Nome</label><input type="text" id="un-nome" placeholder="Ex: Recife"></div>
+            <div class="field"><label>Responsável (opcional)</label><input type="text" id="un-responsavel" placeholder="Ex: João Santos"></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>Telefone (opcional)</label><input type="text" id="un-telefone" placeholder="Ex: 81 98765-4321"></div>
+            <div class="field"><label>Endereço (opcional)</label><input type="text" id="un-endereco" placeholder="Rua, número, bairro"></div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-primary" id="btn-add-unidade">Adicionar unidade</button>
+            <button type="button" class="btn btn-outline" id="btn-cancelar-unidade" style="display:none;">Cancelar edição</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Unidades cadastradas</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Responsável</th><th>Status</th><th></th></tr></thead>
+              <tbody id="tbl-unidades"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="unidades-vazio" style="display:none;">Nenhuma unidade cadastrada ainda.</div>
+        </div>
+      </div>
+
+      <!-- SETORES -->
+      <div id="aba-setores" style="display:none;">
+        <div class="card">
+          <h2 id="set-form-titulo">Novo setor</h2>
+          <input type="hidden" id="set-editando-id" value="">
+          <div class="form-grid">
+            <div class="field"><label>Unidade</label><select id="set-unidade"></select></div>
+            <div class="field"><label>Nome do setor</label><input type="text" id="set-nome" placeholder="Ex: Financeiro"></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>Responsável (opcional)</label><input type="text" id="set-responsavel" placeholder="Ex: Ana Souza"></div>
+            <div class="field"><label>WhatsApp do responsável (opcional)</label><input type="text" id="set-responsavel-whatsapp" placeholder="Ex: 81 98765-4321"></div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-primary" id="btn-add-setor">Adicionar setor</button>
+            <button type="button" class="btn btn-outline" id="btn-cancelar-setor" style="display:none;">Cancelar edição</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Setores cadastrados</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Setor</th><th>Unidade</th><th>Responsável</th><th>WhatsApp</th><th>Status</th><th></th></tr></thead>
+              <tbody id="tbl-setores"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="setores-vazio" style="display:none;">Nenhum setor cadastrado ainda.</div>
+        </div>
+      </div>
+
+      <!-- COLABORADORES -->
+      <div id="aba-colaboradores" style="display:none;">
+        <div class="card">
+          <h2 id="col-form-titulo">Novo colaborador</h2>
+          <input type="hidden" id="col-editando-id" value="">
+          <div class="form-grid">
+            <div class="field"><label>Nome</label><input type="text" id="col-nome" placeholder="Ex: Maria Silva"></div>
+            <div class="field"><label>WhatsApp (opcional)</label><input type="text" id="col-whatsapp" placeholder="Ex: 81 98765-4321"></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>Unidade</label><select id="col-unidade"></select></div>
+            <div class="field"><label>Setor (opcional)</label><select id="col-setor"><option value="">Selecione a unidade primeiro</option></select></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>E-mail de contato (opcional)</label><input type="email" id="col-email" placeholder="maria@empresa.com"></div>
+            <div class="field"><label>CPF (opcional)</label><input type="text" id="col-cpf" placeholder="000.000.000-00"></div>
+          </div>
+          <div class="field">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+              <input type="checkbox" id="col-autorizado" style="width:auto;">
+              Autorizado a receber encomendas particulares
+            </label>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-primary" id="btn-add-colaborador">Adicionar colaborador</button>
+            <button type="button" class="btn btn-outline" id="btn-cancelar-colaborador" style="display:none;">Cancelar edição</button>
+          </div>
+          <div class="card" id="col-login-card" style="display:none;margin-top:14px;background:var(--bg-soft, #f6f6f4);">
+            <h2 style="font-size:15px;">E-mail de login</h2>
+            <p class="hint" id="col-login-hint" style="margin-top:0;">—</p>
+            <div class="form-grid" id="col-login-campos" style="display:none;">
+              <div class="field"><label>Novo e-mail de login</label><input type="email" id="col-novo-email-login" placeholder="novo@email.com"></div>
+            </div>
+            <div class="actions" id="col-login-acao" style="display:none;">
+              <button type="button" class="btn btn-outline" id="btn-trocar-email-login">Alterar e-mail de login</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Colaboradores cadastrados</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Unidade / Setor</th><th>Login</th><th>Enc. particular</th><th></th></tr></thead>
+              <tbody id="tbl-colaboradores"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="colaboradores-vazio" style="display:none;">Nenhum colaborador cadastrado ainda.</div>
+        </div>
+      </div>
+
+      <!-- PORTARIA -->
+      <div id="aba-portaria" style="display:none;">
+        <div class="card">
+          <h2 id="port-form-titulo">Nova portaria / recepção</h2>
+          <p class="hint">Cadastre o porteiro, porteira ou recepção pelo nome. Essa pessoa recebe um login próprio, mas só enxerga o leitor de etiqueta e a lista de quem já retirou / não retirou — nada do resto do sistema.</p>
+          <input type="hidden" id="port-editando-id" value="">
+          <div class="form-grid">
+            <div class="field"><label>Nome</label><input type="text" id="port-nome" placeholder="Ex: Seu Antônio"></div>
+            <div class="field"><label>Cargo</label><input type="text" id="port-cargo" placeholder="Ex: Porteiro, Porteira, Recepção" value="Porteiro(a)"></div>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>WhatsApp (opcional)</label><input type="text" id="port-whatsapp" placeholder="Ex: 81 98765-4321"></div>
+          </div>
+          <div class="form-grid" id="port-acesso-campos">
+            <div class="field"><label>E-mail de login</label><input type="email" id="port-email" placeholder="porteiro@email.com"></div>
+            <div class="field"><label>Senha</label><input type="password" id="port-senha" placeholder="Mínimo 6 caracteres"></div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-primary" id="btn-add-portaria">Cadastrar portaria</button>
+            <button type="button" class="btn btn-outline" id="btn-cancelar-portaria" style="display:none;">Cancelar edição</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Portaria / recepção cadastrada</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Cargo</th><th>Login</th><th>Status</th><th></th></tr></thead>
+              <tbody id="tbl-portaria"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="portaria-vazio" style="display:none;">Nenhum porteiro/recepção cadastrado ainda.</div>
+        </div>
+      </div>
+
+      <!-- ENCOMENDAS -->
+      <div id="aba-encomendas" style="display:none;">
+        <div class="card">
+          <h2>Encomendas recentes</h2>
+          <p class="hint">Pra registrar uma encomenda nova, use o leitor de etiqueta na portaria/recepção.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Destinatário</th><th>Tipo</th><th>Recebida em</th><th>Status</th></tr></thead>
+              <tbody id="tbl-encomendas"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="encomendas-vazio" style="display:none;">Nenhuma encomenda registrada ainda.</div>
+        </div>
+      </div>
+
+      <div id="aba-dashboard" style="display:none;">
+        <div class="card">
+          <h2 id="empresa-nome">—</h2>
+          <p class="hint" id="empresa-razao" style="margin-bottom:0;">—</p>
+          <p class="hint" style="margin-bottom:0;"><span id="empresa-acesso-badge" class="badge badge-danger" style="display:none;">acesso bloqueado</span></p>
+          <div data-admin-only="1" style="display:none;margin-top:14px;">
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+              <span id="perfil-preview" style="display:inline-block;"></span>
+              <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+                Escolher foto
+                <input type="file" accept="image/*" id="f-perfil-foto-input" style="display:none;">
+              </label>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-remover-perfil-foto" style="display:none;">Remover foto</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Dashboard de entregas</h2>
+          <p class="hint">Movimento dos últimos 30 dias.</p>
+          <div class="stat-grid">
+            <div class="stat"><div class="num" id="emp-dash-aguardando">—</div><div class="lbl">Aguardando retirada</div></div>
+            <div class="stat"><div class="num" id="emp-dash-retiradas-30d">—</div><div class="lbl">Retiradas (30 dias)</div></div>
+            <div class="stat"><div class="num" id="emp-dash-tempo-medio">—</div><div class="lbl">Tempo médio de retirada</div></div>
+            <div class="stat" id="emp-dash-atrasadas-tile"><div class="num" id="emp-dash-atrasadas">—</div><div class="lbl">Esperando há mais de 3 dias</div></div>
+          </div>
+          <div id="emp-dash-grafico-wrap"></div>
+        </div>
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Quem ainda não retirou</h2>
+          <p class="hint" id="emp-nao-retirado-vazio" style="display:none;margin-bottom:0;">Nenhuma encomenda esperando retirada no momento.</p>
+          <div class="table-wrap" id="emp-nao-retirado-tabela-wrap" style="display:none;">
+            <table>
+              <thead><tr><th>Colaborador</th><th>Chegou</th><th>Espera</th><th>Ação</th></tr></thead>
+              <tbody id="emp-nao-retirado-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="lembrete-modal-backdrop" class="malote-modal-backdrop" style="display:none;">
+    <div class="malote-modal">
+      <h3>Enviar lembrete de retirada?</h3>
+      <p id="lembrete-modal-texto">Deseja avisar pelo WhatsApp que a encomenda continua aguardando retirada?</p>
+      <div class="actions">
+        <button type="button" class="btn btn-outline" id="lembrete-modal-cancelar">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="lembrete-modal-confirmar">Enviar pelo WhatsApp</button>
+      </div>
+    </div>
+  </div>
+  <script src="/parceiros/assets/supabase-client.js"></script>
+  <script>
+    var sessaoAtual = null;
+    var empresaAtual = null;
+    var souAdministrador = false;
+    var estado = { unidades: [], setores: [], colaboradores: [], encomendas: [], porteiros: [] };
+    var empresaFotoPath = null;
+
+    function aplicarPermissoes(){
+      document.querySelectorAll('[data-admin-only]').forEach(function(el){
+        el.style.display = souAdministrador ? '' : 'none';
+      });
+    }
+
+    function renderPerfilPreview(){
+      var el = document.getElementById('perfil-preview');
+      if (!el) return;
+      var removerBtn = document.getElementById('btn-remover-perfil-foto');
+      var html;
+      if (empresaFotoPath){
+        html = '<img src="' + malotFotoPerfilUrl(empresaFotoPath) + '" alt="" style="width:96px;height:96px;border-radius:18px;object-fit:cover;display:block;">';
+      } else {
+        html = '<div style="width:96px;height:96px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:700;font-size:30px;">' + malotIniciais(empresaAtual ? empresaAtual.nome : '') + '</div>';
+      }
+      el.innerHTML = html;
+      if (removerBtn) removerBtn.style.display = empresaFotoPath ? 'inline-flex' : 'none';
+    }
+
+    document.getElementById('f-perfil-foto-input').addEventListener('change', function(e){
+      var file = e.target.files && e.target.files[0];
+      if (!file || !souAdministrador) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        var img = new Image();
+        img.onload = async function(){
+          var maxW = 400;
+          var scale = Math.min(1, maxW / img.width);
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          try {
+            if (empresaFotoPath) await malote.storage.from('perfil-fotos').remove([empresaFotoPath]).catch(function(){});
+            var caminho = empresaAtual.id + '/perfil-' + Date.now() + '.jpg';
+            var up = await malote.storage.from('perfil-fotos').upload(caminho, malotDataUrlParaBlob(dataUrl), { contentType: 'image/jpeg', upsert: true });
+            if (up.error) throw up.error;
+            var upd = await malote.from('condominios').update({ foto_perfil_path: caminho }).eq('id', empresaAtual.id);
+            if (upd.error) throw upd.error;
+            empresaFotoPath = caminho;
+            empresaAtual.foto_perfil_path = caminho;
+            renderPerfilPreview();
+            malotAtualizarLogo('topbar-brand-badge', empresaAtual.nome, empresaFotoPath, { imgClass: 'brand-badge', avatarClass: 'brand-badge brand-badge-iniciais' });
+            malotToast('Foto atualizada!', 'ok');
+          } catch (err) {
+            malotToast(malotErroMsg(err), 'erro');
+          }
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('btn-remover-perfil-foto').addEventListener('click', async function(){
+      if (!souAdministrador || !empresaFotoPath) return;
+      try {
+        await malote.storage.from('perfil-fotos').remove([empresaFotoPath]).catch(function(){});
+        var upd = await malote.from('condominios').update({ foto_perfil_path: null }).eq('id', empresaAtual.id);
+        if (upd.error) throw upd.error;
+        empresaFotoPath = null;
+        empresaAtual.foto_perfil_path = null;
+        renderPerfilPreview();
+        malotAtualizarLogo('topbar-brand-badge', empresaAtual.nome, null, { imgClass: 'brand-badge', avatarClass: 'brand-badge brand-badge-iniciais' });
+        malotToast('Foto removida.', 'ok');
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      }
+    });
+
+    function esc(s){ var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+    document.querySelectorAll('.nav a[data-aba]').forEach(function(a){
+      a.addEventListener('click', function(e){
+        e.preventDefault();
+        document.querySelectorAll('.nav a[data-aba]').forEach(function(x){ x.classList.remove('active'); });
+        this.classList.add('active');
+        ['visao','unidades','setores','colaboradores','portaria','encomendas','dashboard'].forEach(function(id){
+          document.getElementById('aba-'+id).style.display = (id === a.getAttribute('data-aba')) ? 'block' : 'none';
+        });
+      });
+    });
+
+    async function finalizarCadastroPendente(){
+      var nome = null;
+      try { nome = localStorage.getItem('malote_nome_empresa_pendente'); } catch(e){}
+      if (!nome) return;
+      document.getElementById('carregando').style.display = 'none';
+      document.getElementById('passo-finalizando').style.display = 'block';
+      try {
+        var razaoSocial = localStorage.getItem('malote_razao_social_pendente') || null;
+        var cnpj = localStorage.getItem('malote_cnpj_pendente') || null;
+        var nomeUnidade = localStorage.getItem('malote_nome_unidade_pendente') || null;
+        var enderecoStr = localStorage.getItem('malote_endereco_empresa_pendente');
+        var endereco = enderecoStr ? JSON.parse(enderecoStr) : {};
+        var qtdColaboradoresPendente = parseInt(localStorage.getItem('malote_qtd_colaboradores_empresa_pendente'), 10);
+        await malote.rpc('cadastrar_empresa_self', {
+          p_nome: nome, p_razao_social: razaoSocial, p_cnpj: cnpj,
+          p_cep: endereco.cep || null, p_endereco: endereco.endereco || null,
+          p_numero: endereco.numero || null, p_bairro: endereco.bairro || null,
+          p_cidade: endereco.cidade || null, p_uf: endereco.uf || null,
+          p_nome_primeira_unidade: nomeUnidade,
+          p_qtd_colaboradores_contratados: isNaN(qtdColaboradoresPendente) ? null : qtdColaboradoresPendente
+        });
+      } catch (e) { /* se der erro (ex: já finalizado em outra aba), segue e carrega normalmente */ }
+      try {
+        localStorage.removeItem('malote_nome_empresa_pendente');
+        localStorage.removeItem('malote_razao_social_pendente');
+        localStorage.removeItem('malote_cnpj_pendente');
+        localStorage.removeItem('malote_nome_unidade_pendente');
+        localStorage.removeItem('malote_endereco_empresa_pendente');
+        localStorage.removeItem('malote_qtd_colaboradores_empresa_pendente');
+      } catch(e){}
+      document.getElementById('passo-finalizando').style.display = 'none';
+      document.getElementById('carregando').style.display = 'flex';
+    }
+
+    async function carregar(){
+      sessaoAtual = await malotExigirSessao('/parceiros/login.html');
+      if (!sessaoAtual) return;
+
+      // porteiro/recepção nunca deve ver este painel — nem chegando aqui por
+      // engano, nem voltando pelo botão "voltar" do navegador/celular depois
+      // de sair de uma tela em cache (bfcache). Checa isso antes de qualquer
+      // outra coisa e manda direto pro leitor, que é a única tela dele.
+      var pcheckEmpresa = await malote.rpc('auth_porteiro_condominio_id');
+      if (!pcheckEmpresa.error && pcheckEmpresa.data){ location.replace('/index.html'); return; }
+
+      await finalizarCadastroPendente();
+
+      var r = await malote.from('condominios').select('*').eq('user_id', sessaoAtual.user.id).maybeSingle();
+      if (r.error && r.error.code !== 'PGRST116'){ document.getElementById('carregando').style.display = 'none'; malotToast(malotErroMsg(r.error), 'erro'); return; }
+
+      if (!r.data){
+        // não é dono direto: pode ser membro da equipe (gestor/responsável/operador)
+        var membership = await malote.rpc('minha_empresa_membership');
+        if (membership.error || !membership.data || !membership.data.length){
+          document.getElementById('carregando').style.display = 'none';
+          document.getElementById('erro-vinculo').style.display = 'block';
+          return;
+        }
+        var condId = membership.data[0].condominio_id;
+        var r2 = await malote.from('condominios').select('*').eq('id', condId).maybeSingle();
+        if (r2.error || !r2.data){
+          document.getElementById('carregando').style.display = 'none';
+          document.getElementById('erro-vinculo').style.display = 'block';
+          return;
+        }
+        empresaAtual = r2.data;
+        souAdministrador = membership.data.some(function(m){ return m.papel === 'administrador_corporativo'; });
+      } else {
+        empresaAtual = r.data;
+        souAdministrador = true;
+      }
+      aplicarPermissoes();
+
+      if (empresaAtual.tipo_operacao !== 'empresarial'){
+        // conta condominial normal chegou aqui por engano — manda pro painel certo
+        location.href = '/sindico/painel.html';
+        return;
+      }
+
+      document.getElementById('carregando').style.display = 'none';
+      document.getElementById('conteudo').style.display = 'block';
+      document.getElementById('empresa-nome').textContent = empresaAtual.nome;
+      document.getElementById('empresa-razao').textContent = [empresaAtual.razao_social, empresaAtual.cnpj].filter(Boolean).join(' · ') || '—';
+      empresaFotoPath = empresaAtual.foto_perfil_path || null;
+      renderPerfilPreview();
+      malotAtualizarLogo('topbar-brand-badge', empresaAtual.nome, empresaFotoPath, { imgClass: 'brand-badge', avatarClass: 'brand-badge brand-badge-iniciais' });
+
+      // sempre reparte do zero antes de decidir o que mostrar — evita que uma
+      // verificação de liberação (sem recarregar a página) deixe abas presas
+      // com o display:none que a gente força enquanto bloqueado.
+      document.getElementById('empresa-acesso-badge').style.display = 'none';
+      document.getElementById('painel-bloqueado').style.display = 'none';
+      document.querySelectorAll('.nav a[data-aba]').forEach(function(a){ a.style.display = ''; });
+      aplicarPermissoes();
+
+      if (empresaAtual.bloqueado){
+        document.getElementById('empresa-acesso-badge').style.display = 'inline-block';
+        document.getElementById('painel-bloqueado').style.display = 'block';
+
+        // enquanto bloqueada, some com as abas de verdade (nav e conteúdo) —
+        // só quem é administrador vê o caminho pra ativar o plano; os demais
+        // só veem o aviso, igual ao resto do sistema. O link "Plano" (que
+        // leva pra contratar-plano.html, fora do painel) também precisa
+        // sumir aqui: ele não tem data-aba (não é uma aba interna, é uma
+        // página separada), então o loop acima não o esconde sozinho — e a
+        // própria tela bloqueada já oferece o fluxo de ativação embutido
+        // (bloqueado-pagar) pro administrador.
+        document.querySelectorAll('.nav a[data-aba]').forEach(function(a){ a.style.display = 'none'; });
+        document.getElementById('nav-plano').style.display = 'none';
+        ['visao','unidades','setores','colaboradores','portaria','encomendas','dashboard'].forEach(function(id){
+          document.getElementById('aba-'+id).style.display = 'none';
+        });
+        if (souAdministrador){
+          document.getElementById('bloqueado-pagar').style.display = 'block';
+          document.getElementById('bloqueado-sem-permissao-wrap').style.display = 'none';
+          document.getElementById('ativacao-passo-calculo').style.display = 'block';
+          document.getElementById('ativacao-passo-resumo').style.display = 'none';
+          if (empresaAtual.qtd_colaboradores_contratados){
+            document.getElementById('ativacao-qtd-colaboradores').value = empresaAtual.qtd_colaboradores_contratados;
+          }
+          atualizarValorHintAtivacao();
+        } else {
+          document.getElementById('bloqueado-pagar').style.display = 'none';
+          document.getElementById('bloqueado-sem-permissao-wrap').style.display = 'block';
+          document.getElementById('bloqueado-motivo').textContent = 'Fale com o administrador da empresa pra ativar o Plano Empresarial e liberar o acesso.';
+        }
+        return;
+      }
+
+      // saiu do estado bloqueado (ex: pagamento aprovado enquanto a pessoa
+      // ainda estava na tela) — repõe a aba padrão, já que enquanto bloqueada
+      // todas ficaram com display:none.
+      ['visao','unidades','setores','colaboradores','portaria','encomendas','dashboard'].forEach(function(id){
+        document.getElementById('aba-'+id).style.display = (id === 'visao') ? 'block' : 'none';
+      });
+      document.querySelectorAll('.nav a[data-aba]').forEach(function(a){ a.classList.toggle('active', a.getAttribute('data-aba') === 'visao'); });
+
+      await carregarDados();
+    }
+
+    async function carregarDados(){
+      var [ru, rs, rc, re, rp] = await Promise.all([
+        malote.from('unidades').select('*').eq('condominio_id', empresaAtual.id).order('nome'),
+        malote.from('setores').select('*').eq('condominio_id', empresaAtual.id).order('nome'),
+        malote.from('colaboradores').select('*').eq('condominio_id', empresaAtual.id).order('nome'),
+        malote.from('encomendas').select('*').eq('condominio_id', empresaAtual.id).order('criado_em', { ascending: false }).limit(50),
+        malote.from('porteiros').select('*').eq('condominio_id', empresaAtual.id).order('nome')
+      ]);
+      estado.unidades = ru.data || [];
+      estado.setores = rs.data || [];
+      estado.colaboradores = rc.data || [];
+      estado.encomendas = re.data || [];
+      estado.porteiros = rp.data || [];
+      renderTudo();
+      carregarDashboardEmpresa();
+    }
+
+    // Dashboard: pico de entregas/retiradas por dia (últimos 30 dias) e a
+    // lista de quem ainda não retirou, ordenada por tempo esperando. Usa uma
+    // busca própria (não o estado.encomendas, que fica limitado a 50 linhas
+    // pra aba "Encomendas"). RLS de `encomendas` já restringe isso ao que o
+    // usuário logado pode ver (empresa inteira pro admin, só o próprio setor
+    // pro responsável de setor), então não precisa filtrar nada além do
+    // condominio_id aqui.
+    async function carregarDashboardEmpresa(){
+      var cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      var cutoffIso = cutoff.toISOString();
+
+      var r = await malote.from('encomendas')
+        .select('id, colaborador_id, bloco, apto, nome_avulso, telefone_avulso, codigo, criado_em, retirado_em, lembrete_manual_qtd, lembrete_manual_ultimo_em')
+        .eq('condominio_id', empresaAtual.id)
+        .or('criado_em.gte.' + cutoffIso + ',retirado_em.is.null,retirado_em.gte.' + cutoffIso)
+        .order('criado_em', { ascending: true });
+
+      if (r.error || !r.data) return;
+
+      var dias = [];
+      var mapaDia = {};
+      for (var i = 29; i >= 0; i--){
+        var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+        var chave = d.toISOString().slice(0, 10);
+        var ponto = { chave: chave, label: String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'), v1: 0, v2: 0 };
+        dias.push(ponto);
+        mapaDia[chave] = ponto;
+      }
+
+      var pendentes = [];
+      var qtdRetiradas30d = 0;
+      var somaTempoRetiradaMs = 0;
+
+      r.data.forEach(function(e){
+        var chaveCriado = (e.criado_em || '').slice(0, 10);
+        if (mapaDia[chaveCriado]) mapaDia[chaveCriado].v1++;
+
+        if (e.retirado_em){
+          var chaveRetirado = e.retirado_em.slice(0, 10);
+          if (mapaDia[chaveRetirado]) mapaDia[chaveRetirado].v2++;
+          if (new Date(e.retirado_em) >= cutoff){
+            qtdRetiradas30d++;
+            somaTempoRetiradaMs += (new Date(e.retirado_em) - new Date(e.criado_em));
+          }
+        } else {
+          pendentes.push(e);
+        }
+      });
+
+      document.getElementById('emp-dash-aguardando').textContent = pendentes.length;
+      document.getElementById('emp-dash-retiradas-30d').textContent = qtdRetiradas30d;
+      document.getElementById('emp-dash-tempo-medio').textContent = qtdRetiradas30d ? malotFormatarEspera(somaTempoRetiradaMs / qtdRetiradas30d) : '—';
+
+      var agora = Date.now();
+      var LIMITE_ATRASO_MS = 3 * 24 * 60 * 60 * 1000; // 3 dias esperando = atrasada
+      var LIMITE_ALERTA_MS = 24 * 60 * 60 * 1000; // 1 dia esperando = atenção
+      var atrasadas = pendentes.filter(function(e){ return (agora - new Date(e.criado_em).getTime()) > LIMITE_ATRASO_MS; });
+      document.getElementById('emp-dash-atrasadas').textContent = atrasadas.length;
+      document.getElementById('emp-dash-atrasadas-tile').classList.toggle('alerta', atrasadas.length > 0);
+
+      document.getElementById('emp-dash-grafico-wrap').innerHTML = malotGraficoDuasSeries(dias, {
+        nome1: 'Encomendas recebidas',
+        nome2: 'Retiradas',
+        ariaLabel: 'Encomendas recebidas e retiradas por dia, últimos 30 dias',
+        formatarValor: function(v){ return v + (v === 1 ? ' encomenda' : ' encomendas'); }
+      });
+
+      pendentes.sort(function(a, b){ return new Date(a.criado_em) - new Date(b.criado_em); }); // mais antigo (mais tempo esperando) primeiro
+
+      var wrap = document.getElementById('emp-nao-retirado-tabela-wrap');
+      var vazio = document.getElementById('emp-nao-retirado-vazio');
+      if (!pendentes.length){
+        wrap.style.display = 'none';
+        vazio.style.display = 'block';
+        return;
+      }
+      vazio.style.display = 'none';
+      wrap.style.display = 'block';
+
+      var UM_DIA_MS = 24 * 60 * 60 * 1000;
+      pendentesLembretePorId = {};
+
+      document.getElementById('emp-nao-retirado-tbody').innerHTML = pendentes.map(function(e){
+        var esperaMs = agora - new Date(e.criado_em).getTime();
+        var nomeDestinatario = nomeColaborador(e.colaborador_id) || e.nome_avulso || 'Colaborador removido';
+        // bloco/apto guardam, pra encomenda empresarial, o nome da unidade e
+        // do setor (gravados no momento do recebimento pelo leitor de
+        // etiqueta) — não são "Bloco"/"Apto" de condomínio.
+        var localTxt = e.bloco ? (e.bloco + (e.apto ? ' / ' + e.apto : '')) : '—';
+        var classeBadge = esperaMs > LIMITE_ATRASO_MS ? 'badge-danger' : (esperaMs > LIMITE_ALERTA_MS ? 'badge-warn' : 'badge-muted');
+        var telefone = e.colaborador_id ? telefoneColaborador(e.colaborador_id) : e.telefone_avulso;
+
+        // guarda o necessário pro modal de lembrete achar essa encomenda de
+        // novo no clique, sem precisar buscar tudo de novo no banco.
+        pendentesLembretePorId[e.id] = {
+          nome: nomeDestinatario, telefone: telefone, local: localTxt, codigo: e.codigo,
+          criadoEm: e.criado_em, lembreteQtd: e.lembrete_manual_qtd || 0
+        };
+
+        // o botão de lembrete só aparece depois de 24h esperando (regra do
+        // recurso); antes disso a célula de ação fica vazia mesmo.
+        var acaoHtml;
+        if (esperaMs < UM_DIA_MS){
+          acaoHtml = '<span class="hint" style="margin:0;">—</span>';
+        } else {
+          var ultimoMs = e.lembrete_manual_ultimo_em ? new Date(e.lembrete_manual_ultimo_em).getTime() : null;
+          var enviadoRecente = ultimoMs && (agora - ultimoMs) < UM_DIA_MS;
+          if (enviadoRecente){
+            acaoHtml = '<button type="button" class="btn btn-outline btn-sm" disabled>&#10003; Lembrete enviado</button>' +
+              '<div class="hint" style="margin:6px 0 0;">Enviado ' + esc(malotFormatarQuando(e.lembrete_manual_ultimo_em)) + '<br>Novo lembrete disponível amanhã</div>';
+          } else if (!telefone){
+            acaoHtml = '<span class="hint" style="margin:0;">Sem WhatsApp cadastrado</span>';
+          } else {
+            acaoHtml = '<button type="button" class="btn btn-outline btn-sm" data-lembrete-enviar data-lembrete-id="' + e.id + '">&#128241; Enviar lembrete</button>';
+          }
+        }
+
+        // unidade/setor entra como legenda menor embaixo do nome (em vez de
+        // coluna própria) — com 4 colunas essa tabela ficava larga demais e
+        // cortava numa tela de celular.
+        return '<tr><td>' + esc(nomeDestinatario) + '<br><span class="hint" style="margin:0;">' + esc(localTxt) + '</span></td><td>' + malotFormatarData(e.criado_em) + '</td>' +
+          '<td><span class="badge ' + classeBadge + '">' + malotFormatarEspera(esperaMs) + '</span><br><span class="hint" style="margin:0;">Aguardando há ' + malotFormatarEsperaDias(esperaMs) + '</span></td>' +
+          '<td>' + acaoHtml + '</td></tr>';
+      }).join('');
+
+      document.querySelectorAll('[data-lembrete-enviar]').forEach(function(btn){
+        btn.addEventListener('click', function(){ abrirModalLembrete(btn.getAttribute('data-lembrete-id')); });
+      });
+    }
+
+    function telefoneColaborador(id){ var c = estado.colaboradores.filter(function(x){ return x.id === id; })[0]; return c ? c.whatsapp : null; }
+
+    /* ---------- lembrete de retirada por WhatsApp ---------- */
+    // Guardado à parte de `estado` porque só existe enquanto o dashboard
+    // está na tela — é reconstruído a cada carregarDashboardEmpresa().
+    var pendentesLembretePorId = {};
+    var lembreteAlvoId = null;
+
+    function abrirModalLembrete(id){
+      var info = pendentesLembretePorId[id];
+      if (!info || !info.telefone) return;
+      lembreteAlvoId = id;
+      document.getElementById('lembrete-modal-texto').textContent =
+        'Deseja avisar ' + info.nome + ' pelo WhatsApp que sua encomenda continua aguardando retirada?';
+      document.getElementById('lembrete-modal-backdrop').style.display = 'flex';
+    }
+
+    function fecharModalLembrete(){
+      document.getElementById('lembrete-modal-backdrop').style.display = 'none';
+      lembreteAlvoId = null;
+    }
+
+    function montarMensagemLembrete(info){
+      // Mesmo tom/formato (sem acento, sem emoji, sem quebra de linha) da
+      // mensagem que já é usada quando a encomenda chega — só troca "Chegou"
+      // por "Lembrando que chegou", já que essa é a versão de cobrança pra
+      // quem ainda não retirou. Primeiro nome só, igual à mensagem original.
+      var primeiroNome = (info.nome || '').trim().split(' ')[0] || 'colega';
+      var msg = 'Ola, ' + primeiroNome + '! Lembrando que chegou uma encomenda para voce. Por favor, retire quando puder.';
+      if (info.codigo) msg += ' Codigo: ' + info.codigo + '.';
+      return msg;
+    }
+
+    document.getElementById('lembrete-modal-cancelar').addEventListener('click', fecharModalLembrete);
+    document.getElementById('lembrete-modal-backdrop').addEventListener('click', function(e){
+      if (e.target === this) fecharModalLembrete();
+    });
+
+    document.getElementById('lembrete-modal-confirmar').addEventListener('click', async function(){
+      if (!lembreteAlvoId) return;
+      var info = pendentesLembretePorId[lembreteAlvoId];
+      if (!info) { fecharModalLembrete(); return; }
+
+      var btn = this; var textoOriginal = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Enviando...';
+      try {
+        var link = malotWaLink(info.telefone, montarMensagemLembrete(info));
+        var upd = await malote.from('encomendas').update({
+          lembrete_manual_qtd: (info.lembreteQtd || 0) + 1,
+          lembrete_manual_ultimo_em: new Date().toISOString(),
+          lembrete_manual_operador_nome: (sessaoAtual && sessaoAtual.user ? sessaoAtual.user.email : null),
+          lembrete_manual_telefone: malotDigits(info.telefone)
+        }).eq('id', lembreteAlvoId);
+        if (upd.error) throw upd.error;
+
+        window.open(link, '_blank', 'noopener');
+        fecharModalLembrete();
+        await carregarDashboardEmpresa();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = textoOriginal;
+      }
+    });
+
+    function nomeUnidade(id){ var u = estado.unidades.filter(function(x){ return x.id === id; })[0]; return u ? u.nome : '—'; }
+    function nomeSetor(id){ if (!id) return null; var s = estado.setores.filter(function(x){ return x.id === id; })[0]; return s ? s.nome : null; }
+    function nomeColaborador(id){ if (!id) return null; var c = estado.colaboradores.filter(function(x){ return x.id === id; })[0]; return c ? c.nome : null; }
+
+    function preencherSelectUnidades(select, comPlaceholder, idParaPreservar){
+      // idParaPreservar: o id que deve continuar disponível na lista mesmo
+      // se a unidade estiver inativa. Por padrão usa o valor atual do
+      // próprio <select> — mas quem está entrando em modo de edição de um
+      // registro específico (setor/colaborador) deve passar explicitamente
+      // o unidade_id do registro sendo editado, porque nesse momento o
+      // <select> ainda pode estar com o valor de uma edição anterior (ou
+      // vazio), e não com o vínculo real que precisa ser preservado.
+      var atual = (idParaPreservar !== undefined) ? idParaPreservar : select.value;
+      // só oferece unidades ativas pra escolher — mas se o valor atual (ex:
+      // editando um colaborador/setor já vinculado) for de uma unidade que
+      // foi desativada depois, mantém ela na lista pra não sumir o vínculo.
+      var unidadesParaMostrar = estado.unidades.filter(function(u){
+        return u.status === 'ativo' || u.id === atual;
+      });
+      select.innerHTML = (comPlaceholder ? '<option value="">Selecione...</option>' : '') + unidadesParaMostrar.map(function(u){
+        return '<option value="' + u.id + '">' + esc(u.nome) + (u.status !== 'ativo' ? ' (inativa)' : '') + '</option>';
+      }).join('');
+      if (atual) select.value = atual;
+    }
+
+    function renderTudo(){
+      // visão geral
+      document.getElementById('stat-unidades').textContent = estado.unidades.length;
+      document.getElementById('stat-setores').textContent = estado.setores.length;
+      document.getElementById('stat-colaboradores').textContent = estado.colaboradores.length;
+      var aguardando = estado.encomendas.filter(function(e){ return !e.retirado_em; });
+      document.getElementById('stat-aguardando').textContent = aguardando.length;
+
+      var resumoTbl = document.getElementById('tbl-resumo-unidades');
+      resumoTbl.innerHTML = '';
+      estado.unidades.forEach(function(u){
+        var colabsDaUnidade = estado.colaboradores.filter(function(c){ return c.unidade_id === u.id; });
+        var aguardandoDaUnidade = aguardando.filter(function(e){
+          var col = estado.colaboradores.filter(function(c){ return c.id === e.colaborador_id; })[0];
+          return (col && col.unidade_id === u.id) || (e.setor_id && estado.setores.filter(function(s){ return s.id === e.setor_id && s.unidade_id === u.id; }).length);
+        });
+        resumoTbl.innerHTML += '<tr><td>' + esc(u.nome) + '</td><td>' + colabsDaUnidade.length + '</td><td>' + aguardandoDaUnidade.length + '</td></tr>';
+      });
+      document.getElementById('resumo-unidades-vazio').style.display = estado.unidades.length ? 'none' : 'block';
+
+      // unidades
+      preencherSelectUnidades(document.getElementById('set-unidade'), false);
+      preencherSelectUnidades(document.getElementById('col-unidade'), false);
+      atualizarSetoresDoColaborador();
+      var tblU = document.getElementById('tbl-unidades');
+      tblU.innerHTML = '';
+      estado.unidades.forEach(function(u){
+        tblU.innerHTML += '<tr><td>' + esc(u.nome) + '</td><td>' + esc(u.responsavel || '—') + '</td>' +
+          '<td>' + (u.status === 'ativo' ? '<span class="badge badge-ok">ativa</span>' : '<span class="badge badge-muted">inativa</span>') + '</td>' +
+          '<td><button type="button" class="btn btn-outline btn-sm" data-editar-unidade="' + u.id + '">Editar</button> ' +
+          '<button type="button" class="btn btn-outline btn-sm" data-toggle-unidade="' + u.id + '" data-status="' + u.status + '">' + (u.status === 'ativo' ? 'Desativar' : 'Reativar') + '</button></td></tr>';
+      });
+      document.getElementById('unidades-vazio').style.display = estado.unidades.length ? 'none' : 'block';
+      tblU.querySelectorAll('[data-toggle-unidade]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var novoStatus = this.getAttribute('data-status') === 'ativo' ? 'inativo' : 'ativo';
+          var r = await malote.from('unidades').update({ status: novoStatus }).eq('id', this.getAttribute('data-toggle-unidade'));
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          await carregarDados();
+        });
+      });
+      tblU.querySelectorAll('[data-editar-unidade]').forEach(function(btn){
+        btn.addEventListener('click', function(){ entrarEmEdicaoUnidade(this.getAttribute('data-editar-unidade')); });
+      });
+
+      // setores
+      var tblS = document.getElementById('tbl-setores');
+      tblS.innerHTML = '';
+      estado.setores.forEach(function(s){
+        tblS.innerHTML += '<tr><td>' + esc(s.nome) + '</td><td>' + esc(nomeUnidade(s.unidade_id)) + '</td><td>' + esc(s.responsavel || '—') + '</td><td>' + esc(s.responsavel_whatsapp || '—') + '</td>' +
+          '<td>' + (s.status === 'ativo' ? '<span class="badge badge-ok">ativo</span>' : '<span class="badge badge-muted">inativo</span>') + '</td>' +
+          '<td><button type="button" class="btn btn-outline btn-sm" data-editar-setor="' + s.id + '">Editar</button> ' +
+          '<button type="button" class="btn btn-outline btn-sm" data-toggle-setor="' + s.id + '" data-status="' + s.status + '">' + (s.status === 'ativo' ? 'Desativar' : 'Reativar') + '</button></td></tr>';
+      });
+      document.getElementById('setores-vazio').style.display = estado.setores.length ? 'none' : 'block';
+      tblS.querySelectorAll('[data-toggle-setor]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var novoStatus = this.getAttribute('data-status') === 'ativo' ? 'inativo' : 'ativo';
+          var r = await malote.from('setores').update({ status: novoStatus }).eq('id', this.getAttribute('data-toggle-setor'));
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          await carregarDados();
+        });
+      });
+      tblS.querySelectorAll('[data-editar-setor]').forEach(function(btn){
+        btn.addEventListener('click', function(){ entrarEmEdicaoSetor(this.getAttribute('data-editar-setor')); });
+      });
+
+      // colaboradores
+      var tblC = document.getElementById('tbl-colaboradores');
+      tblC.innerHTML = '';
+      estado.colaboradores.forEach(function(c){
+        var setorTxt = nomeSetor(c.setor_id);
+        tblC.innerHTML += '<tr><td>' + esc(c.nome) + (c.whatsapp ? '<br><span class="hint" style="margin:0;">' + esc(c.whatsapp) + '</span>' : '') + '</td>' +
+          '<td>' + esc(nomeUnidade(c.unidade_id)) + (setorTxt ? ' / ' + esc(setorTxt) : '') + '</td>' +
+          '<td>' + (c.user_id ? '<span class="badge badge-ok">ativo</span>' : '<span class="badge badge-muted">aguardando</span>') + '</td>' +
+          '<td>' + (c.autorizado_encomenda_particular ? '<span class="badge badge-ok">autorizado</span>' : '<span class="badge badge-muted">não</span>') + '</td>' +
+          '<td>' + (souAdministrador ? '<button type="button" class="btn btn-outline btn-sm" data-editar-colaborador="' + c.id + '">Editar</button> ' : '') +
+          '<button type="button" class="btn btn-outline btn-sm" data-toggle-autorizacao="' + c.id + '" data-atual="' + (c.autorizado_encomenda_particular ? '1' : '0') + '">' + (c.autorizado_encomenda_particular ? 'Revogar' : 'Autorizar') + '</button></td></tr>';
+      });
+      document.getElementById('colaboradores-vazio').style.display = estado.colaboradores.length ? 'none' : 'block';
+      tblC.querySelectorAll('[data-toggle-autorizacao]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var novoValor = this.getAttribute('data-atual') !== '1';
+          var r = await malote.from('colaboradores').update({ autorizado_encomenda_particular: novoValor }).eq('id', this.getAttribute('data-toggle-autorizacao'));
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          await carregarDados();
+        });
+      });
+      tblC.querySelectorAll('[data-editar-colaborador]').forEach(function(btn){
+        btn.addEventListener('click', function(){ entrarEmEdicaoColaborador(this.getAttribute('data-editar-colaborador')); });
+      });
+
+      // portaria / recepção
+      var tblP = document.getElementById('tbl-portaria');
+      tblP.innerHTML = '';
+      estado.porteiros.forEach(function(p){
+        tblP.innerHTML += '<tr><td>' + esc(p.nome) + (p.whatsapp ? '<br><span class="hint" style="margin:0;">' + esc(p.whatsapp) + '</span>' : '') + '</td>' +
+          '<td>' + esc(p.cargo || '—') + '</td>' +
+          '<td>' + esc(p.email_login || '—') + '</td>' +
+          '<td>' + (p.ativo ? '<span class="badge badge-ok">ativo</span>' : '<span class="badge badge-muted">desativado</span>') + '</td>' +
+          '<td><button type="button" class="btn btn-outline btn-sm" data-editar-portaria="' + p.id + '">Editar</button> ' +
+          '<button type="button" class="btn btn-outline btn-sm" data-toggle-portaria="' + p.id + '" data-atual="' + (p.ativo ? '1' : '0') + '">' + (p.ativo ? 'Desativar' : 'Reativar') + '</button></td></tr>';
+      });
+      document.getElementById('portaria-vazio').style.display = estado.porteiros.length ? 'none' : 'block';
+      tblP.querySelectorAll('[data-toggle-portaria]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var novoValor = this.getAttribute('data-atual') !== '1';
+          var r = await malote.from('porteiros').update({ ativo: novoValor }).eq('id', this.getAttribute('data-toggle-portaria'));
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          malotToast(novoValor ? 'Acesso reativado.' : 'Acesso desativado.', 'ok');
+          await carregarDados();
+        });
+      });
+      tblP.querySelectorAll('[data-editar-portaria]').forEach(function(btn){
+        btn.addEventListener('click', function(){ entrarEmEdicaoPortaria(this.getAttribute('data-editar-portaria')); });
+      });
+
+      // encomendas
+      var tblE = document.getElementById('tbl-encomendas');
+      tblE.innerHTML = '';
+      estado.encomendas.forEach(function(e){
+        var destinatario = nomeColaborador(e.colaborador_id) || e.nome_avulso || (e.setor_id ? ('Setor: ' + esc(nomeSetor(e.setor_id) || '—')) : '—');
+        tblE.innerHTML += '<tr><td>' + esc(destinatario) + '</td><td>' + esc(e.tipo_entrega || 'encomenda') + '</td>' +
+          '<td>' + malotFormatarData(e.criado_em) + '</td>' +
+          '<td>' + (e.retirado_em ? '<span class="badge badge-ok">retirada</span>' : '<span class="badge badge-warn">aguardando</span>') + '</td></tr>';
+      });
+      document.getElementById('encomendas-vazio').style.display = estado.encomendas.length ? 'none' : 'block';
+    }
+
+    function limparFormularioUnidade(){
+      document.getElementById('un-editando-id').value = '';
+      document.getElementById('un-form-titulo').textContent = 'Nova unidade';
+      document.getElementById('btn-add-unidade').textContent = 'Adicionar unidade';
+      document.getElementById('btn-cancelar-unidade').style.display = 'none';
+      document.getElementById('un-nome').value = '';
+      document.getElementById('un-responsavel').value = '';
+      document.getElementById('un-telefone').value = '';
+      document.getElementById('un-endereco').value = '';
+    }
+
+    function entrarEmEdicaoUnidade(id){
+      var u = estado.unidades.filter(function(x){ return x.id === id; })[0];
+      if (!u) return;
+      document.getElementById('un-editando-id').value = u.id;
+      document.getElementById('un-form-titulo').textContent = 'Editar unidade';
+      document.getElementById('btn-add-unidade').textContent = 'Salvar alterações';
+      document.getElementById('btn-cancelar-unidade').style.display = '';
+      document.getElementById('un-nome').value = u.nome || '';
+      document.getElementById('un-responsavel').value = u.responsavel || '';
+      document.getElementById('un-telefone').value = u.telefone || '';
+      document.getElementById('un-endereco').value = u.endereco || '';
+      document.getElementById('un-nome').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    document.getElementById('btn-cancelar-unidade').addEventListener('click', limparFormularioUnidade);
+
+    document.getElementById('btn-add-unidade').addEventListener('click', async function(){
+      var nome = document.getElementById('un-nome').value.trim();
+      if (!nome){ malotToast('Preencha o nome da unidade.', 'erro'); return; }
+      var editandoId = document.getElementById('un-editando-id').value;
+      var btn = this; btn.disabled = true;
+      try {
+        var dados = {
+          nome: nome,
+          responsavel: document.getElementById('un-responsavel').value.trim() || null,
+          telefone: document.getElementById('un-telefone').value.trim() || null,
+          endereco: document.getElementById('un-endereco').value.trim() || null
+        };
+        var r;
+        if (editandoId){
+          r = await malote.from('unidades').update(dados).eq('id', editandoId);
+        } else {
+          dados.condominio_id = empresaAtual.id;
+          r = await malote.from('unidades').insert(dados);
+        }
+        if (r.error) throw r.error;
+        limparFormularioUnidade();
+        malotToast(editandoId ? 'Unidade atualizada!' : 'Unidade adicionada!', 'ok');
+        await carregarDados();
+      } catch (err) { malotToast(malotErroMsg(err), 'erro'); }
+      finally { btn.disabled = false; }
+    });
+
+    function limparFormularioSetor(){
+      document.getElementById('set-editando-id').value = '';
+      document.getElementById('set-form-titulo').textContent = 'Novo setor';
+      document.getElementById('btn-add-setor').textContent = 'Adicionar setor';
+      document.getElementById('btn-cancelar-setor').style.display = 'none';
+      document.getElementById('set-nome').value = '';
+      document.getElementById('set-responsavel').value = '';
+      document.getElementById('set-responsavel-whatsapp').value = '';
+      preencherSelectUnidades(document.getElementById('set-unidade'), false);
+    }
+
+    function entrarEmEdicaoSetor(id){
+      var s = estado.setores.filter(function(x){ return x.id === id; })[0];
+      if (!s) return;
+      document.getElementById('set-editando-id').value = s.id;
+      document.getElementById('set-form-titulo').textContent = 'Editar setor';
+      document.getElementById('btn-add-setor').textContent = 'Salvar alterações';
+      document.getElementById('btn-cancelar-setor').style.display = '';
+      preencherSelectUnidades(document.getElementById('set-unidade'), false, s.unidade_id);
+      document.getElementById('set-unidade').value = s.unidade_id;
+      document.getElementById('set-nome').value = s.nome || '';
+      document.getElementById('set-responsavel').value = s.responsavel || '';
+      document.getElementById('set-responsavel-whatsapp').value = s.responsavel_whatsapp || '';
+      document.getElementById('set-nome').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    document.getElementById('btn-cancelar-setor').addEventListener('click', limparFormularioSetor);
+
+    document.getElementById('btn-add-setor').addEventListener('click', async function(){
+      var unidadeId = document.getElementById('set-unidade').value;
+      var nome = document.getElementById('set-nome').value.trim();
+      if (!unidadeId){ malotToast('Cadastre uma unidade primeiro.', 'erro'); return; }
+      if (!nome){ malotToast('Preencha o nome do setor.', 'erro'); return; }
+      var editandoId = document.getElementById('set-editando-id').value;
+      var btn = this; btn.disabled = true;
+      try {
+        var dados = {
+          unidade_id: unidadeId, nome: nome,
+          responsavel: document.getElementById('set-responsavel').value.trim() || null,
+          responsavel_whatsapp: document.getElementById('set-responsavel-whatsapp').value.trim() || null
+        };
+        var r;
+        if (editandoId){
+          r = await malote.from('setores').update(dados).eq('id', editandoId);
+        } else {
+          dados.condominio_id = empresaAtual.id;
+          r = await malote.from('setores').insert(dados);
+        }
+        if (r.error) throw r.error;
+        limparFormularioSetor();
+        malotToast(editandoId ? 'Setor atualizado!' : 'Setor adicionado!', 'ok');
+        await carregarDados();
+      } catch (err) { malotToast(malotErroMsg(err), 'erro'); }
+      finally { btn.disabled = false; }
+    });
+
+    function atualizarSetoresDoColaborador(idSetorParaPreservar){
+      // idSetorParaPreservar: mesmo raciocínio de preencherSelectUnidades —
+      // quem está entrando em modo de edição de um colaborador já vinculado
+      // a um setor inativo precisa passar esse setor_id explicitamente, em
+      // vez de confiar no valor atual do <select> (que pode estar com o
+      // valor de uma edição anterior nesse momento).
+      var unidadeSelect = document.getElementById('col-unidade');
+      var setorSelect = document.getElementById('col-setor');
+      var atual = (idSetorParaPreservar !== undefined) ? idSetorParaPreservar : setorSelect.value;
+      var setoresDaUnidade = estado.setores.filter(function(s){
+        return s.unidade_id === unidadeSelect.value && (s.status === 'ativo' || s.id === atual);
+      });
+      setorSelect.innerHTML = '<option value="">Nenhum / não sei</option>' + setoresDaUnidade.map(function(s){
+        return '<option value="' + s.id + '">' + esc(s.nome) + (s.status !== 'ativo' ? ' (inativo)' : '') + '</option>';
+      }).join('');
+      if (atual) setorSelect.value = atual;
+    }
+    document.getElementById('col-unidade').addEventListener('change', function(){ atualizarSetoresDoColaborador(); });
+
+    function limparFormularioColaborador(){
+      document.getElementById('col-editando-id').value = '';
+      document.getElementById('col-form-titulo').textContent = 'Novo colaborador';
+      document.getElementById('btn-add-colaborador').textContent = 'Adicionar colaborador';
+      document.getElementById('btn-cancelar-colaborador').style.display = 'none';
+      document.getElementById('col-login-card').style.display = 'none';
+      document.getElementById('col-nome').value = '';
+      document.getElementById('col-whatsapp').value = '';
+      document.getElementById('col-email').value = '';
+      document.getElementById('col-cpf').value = '';
+      document.getElementById('col-autorizado').checked = false;
+      preencherSelectUnidades(document.getElementById('col-unidade'), false);
+      atualizarSetoresDoColaborador();
+    }
+
+    function entrarEmEdicaoColaborador(id){
+      if (!souAdministrador) return;
+      var c = estado.colaboradores.filter(function(x){ return x.id === id; })[0];
+      if (!c) return;
+      document.getElementById('col-editando-id').value = c.id;
+      document.getElementById('col-form-titulo').textContent = 'Editar colaborador';
+      document.getElementById('btn-add-colaborador').textContent = 'Salvar alterações';
+      document.getElementById('btn-cancelar-colaborador').style.display = '';
+      document.getElementById('col-nome').value = c.nome || '';
+      document.getElementById('col-whatsapp').value = c.whatsapp || '';
+      document.getElementById('col-email').value = c.email || '';
+      document.getElementById('col-cpf').value = c.cpf || '';
+      document.getElementById('col-autorizado').checked = !!c.autorizado_encomenda_particular;
+      preencherSelectUnidades(document.getElementById('col-unidade'), false, c.unidade_id);
+      document.getElementById('col-unidade').value = c.unidade_id;
+      atualizarSetoresDoColaborador(c.setor_id || '');
+      document.getElementById('col-setor').value = c.setor_id || '';
+
+      // seção de e-mail de login: só faz sentido se o colaborador já criou
+      // conta própria (user_id preenchido) — senão não existe login pra trocar.
+      document.getElementById('col-login-card').style.display = '';
+      document.getElementById('col-novo-email-login').value = '';
+      if (c.user_id){
+        document.getElementById('col-login-hint').textContent = 'Esse colaborador já tem login próprio. Você pode trocar o e-mail usado pra entrar (diferente do e-mail de contato acima).';
+        document.getElementById('col-login-campos').style.display = '';
+        document.getElementById('col-login-acao').style.display = '';
+      } else {
+        document.getElementById('col-login-hint').textContent = 'Esse colaborador ainda não criou login próprio — não há e-mail de login pra alterar.';
+        document.getElementById('col-login-campos').style.display = 'none';
+        document.getElementById('col-login-acao').style.display = 'none';
+      }
+      document.getElementById('btn-trocar-email-login').setAttribute('data-colaborador-id', c.id);
+
+      document.getElementById('col-nome').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    document.getElementById('btn-cancelar-colaborador').addEventListener('click', limparFormularioColaborador);
+
+    document.getElementById('btn-trocar-email-login').addEventListener('click', async function(){
+      var colaboradorId = this.getAttribute('data-colaborador-id');
+      var novoEmail = document.getElementById('col-novo-email-login').value.trim();
+      if (!novoEmail){ malotToast('Digite o novo e-mail de login.', 'erro'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Alterando...';
+      try {
+        var resp = await malote.functions.invoke('empresa-editar-colaborador-login', {
+          body: { colaborador_id: colaboradorId, novo_email: novoEmail }
+        });
+        if (resp.error){
+          var msg = 'Não foi possível alterar o e-mail de login.';
+          try {
+            if (resp.error.context && typeof resp.error.context.json === 'function'){
+              var corpo = await resp.error.context.json();
+              if (corpo && corpo.error) msg = corpo.error;
+            }
+          } catch (e2) { /* usa a mensagem padrão */ }
+          malotToast(msg, 'erro');
+          return;
+        }
+        malotToast('E-mail de login alterado!', 'ok');
+        document.getElementById('col-novo-email-login').value = '';
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Alterar e-mail de login';
+      }
+    });
+
+    /* ---------- Portaria / recepção (acesso restrito ao leitor de etiqueta) ---------- */
+    function limparFormularioPortaria(){
+      document.getElementById('port-editando-id').value = '';
+      document.getElementById('port-form-titulo').textContent = 'Nova portaria / recepção';
+      document.getElementById('btn-add-portaria').textContent = 'Cadastrar portaria';
+      document.getElementById('btn-cancelar-portaria').style.display = 'none';
+      document.getElementById('port-nome').value = '';
+      document.getElementById('port-cargo').value = 'Porteiro(a)';
+      document.getElementById('port-whatsapp').value = '';
+      document.getElementById('port-email').value = '';
+      document.getElementById('port-senha').value = '';
+      document.getElementById('port-acesso-campos').style.display = '';
+    }
+
+    function entrarEmEdicaoPortaria(id){
+      if (!souAdministrador) return;
+      var p = estado.porteiros.filter(function(x){ return x.id === id; })[0];
+      if (!p) return;
+      document.getElementById('port-editando-id').value = p.id;
+      document.getElementById('port-form-titulo').textContent = 'Editar portaria / recepção';
+      document.getElementById('btn-add-portaria').textContent = 'Salvar alterações';
+      document.getElementById('btn-cancelar-portaria').style.display = '';
+      document.getElementById('port-nome').value = p.nome || '';
+      document.getElementById('port-cargo').value = p.cargo || '';
+      document.getElementById('port-whatsapp').value = p.whatsapp || '';
+      // e-mail/senha de login só existem na criação — editar aqui é só
+      // nome/cargo/whatsapp (pra trocar o e-mail de login seria preciso o
+      // mesmo tipo de função com service role usada pra colaborador; como
+      // não foi pedido, quem quiser trocar login desativa e cadastra de novo).
+      document.getElementById('port-acesso-campos').style.display = 'none';
+      document.getElementById('port-nome').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    document.getElementById('btn-cancelar-portaria').addEventListener('click', limparFormularioPortaria);
+
+    document.getElementById('btn-add-portaria').addEventListener('click', async function(){
+      var nome = document.getElementById('port-nome').value.trim();
+      var cargo = document.getElementById('port-cargo').value.trim() || 'Porteiro(a)';
+      var whatsapp = document.getElementById('port-whatsapp').value.trim() || null;
+      var editandoId = document.getElementById('port-editando-id').value;
+      if (!nome){ malotToast('Preencha o nome.', 'erro'); return; }
+
+      var btn = this; btn.disabled = true;
+      try {
+        if (editandoId){
+          var r = await malote.from('porteiros').update({ nome: nome, cargo: cargo, whatsapp: whatsapp }).eq('id', editandoId);
+          if (r.error) throw r.error;
+          malotToast('Dados atualizados!', 'ok');
+        } else {
+          var email = document.getElementById('port-email').value.trim();
+          var senha = document.getElementById('port-senha').value;
+          if (!email){ malotToast('Informe o e-mail de login.', 'erro'); btn.disabled = false; return; }
+          if (!senha || senha.length < 6){ malotToast('A senha precisa ter pelo menos 6 caracteres.', 'erro'); btn.disabled = false; return; }
+          var resp = await malote.functions.invoke('porteiro-criar-login', {
+            body: { condominio_id: empresaAtual.id, nome: nome, cargo: cargo, whatsapp: whatsapp, email: email, senha: senha }
+          });
+          if (resp.error){
+            var msg = 'Não foi possível cadastrar a portaria.';
+            try {
+              if (resp.error.context && typeof resp.error.context.json === 'function'){
+                var corpo = await resp.error.context.json();
+                if (corpo && corpo.error) msg = corpo.error;
+              }
+            } catch (e2) { /* usa a mensagem padrão */ }
+            malotToast(msg, 'erro');
+            return;
+          }
+          malotToast('Portaria cadastrada! Repasse o e-mail e a senha pra essa pessoa entrar no Malote.', 'ok');
+        }
+        limparFormularioPortaria();
+        await carregarDados();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('btn-add-colaborador').addEventListener('click', async function(){
+      var nome = document.getElementById('col-nome').value.trim();
+      var unidadeId = document.getElementById('col-unidade').value;
+      if (!nome){ malotToast('Preencha o nome do colaborador.', 'erro'); return; }
+      if (!unidadeId){ malotToast('Cadastre uma unidade primeiro.', 'erro'); return; }
+      var editandoId = document.getElementById('col-editando-id').value;
+      var btn = this; btn.disabled = true;
+      try {
+        var dados = {
+          unidade_id: unidadeId,
+          setor_id: document.getElementById('col-setor').value || null,
+          nome: nome,
+          whatsapp: document.getElementById('col-whatsapp').value.trim() || null,
+          email: document.getElementById('col-email').value.trim() || null,
+          cpf: document.getElementById('col-cpf').value.trim() || null,
+          autorizado_encomenda_particular: document.getElementById('col-autorizado').checked
+        };
+        var r;
+        if (editandoId){
+          r = await malote.from('colaboradores').update(dados).eq('id', editandoId);
+        } else {
+          dados.condominio_id = empresaAtual.id;
+          r = await malote.from('colaboradores').insert(dados);
+        }
+        if (r.error) throw r.error;
+        limparFormularioColaborador();
+        malotToast(editandoId ? 'Colaborador atualizado!' : 'Colaborador adicionado!', 'ok');
+        await carregarDados();
+      } catch (err) { malotToast(malotErroMsg(err), 'erro'); }
+      finally { btn.disabled = false; }
+    });
+
+    function atualizarValorHintAtivacao(){
+      var qtd = parseInt(document.getElementById('ativacao-qtd-colaboradores').value, 10);
+      var el = document.getElementById('ativacao-valor-hint');
+      if (isNaN(qtd) || qtd < 1){
+        el.innerHTML = 'Valor mensal: <strong>—</strong>';
+        return;
+      }
+      var valor = malotCalcularMensalidadeEmpresarial(qtd);
+      el.innerHTML = 'Valor mensal: <strong>' + malotFormatarReais(valor) + '/mês</strong>';
+    }
+    document.getElementById('ativacao-qtd-colaboradores').addEventListener('input', atualizarValorHintAtivacao);
+
+    document.getElementById('btn-ativacao-ver-resumo').addEventListener('click', function(){
+      var qtd = parseInt(document.getElementById('ativacao-qtd-colaboradores').value, 10);
+      if (isNaN(qtd) || qtd < 1){ malotToast('Digite a quantidade de colaboradores.', 'erro'); return; }
+      var valor = malotCalcularMensalidadeEmpresarial(qtd);
+      document.getElementById('ativacao-resumo-qtd').textContent = qtd;
+      document.getElementById('ativacao-resumo-valor').textContent = malotFormatarReais(valor) + '/mês';
+      document.getElementById('ativacao-passo-calculo').style.display = 'none';
+      document.getElementById('ativacao-passo-resumo').style.display = 'block';
+    });
+
+    document.getElementById('ativacao-link-editar-quantidade').addEventListener('click', function(e){
+      e.preventDefault();
+      document.getElementById('ativacao-passo-resumo').style.display = 'none';
+      document.getElementById('ativacao-passo-calculo').style.display = 'block';
+    });
+
+    document.getElementById('btn-ativacao-confirmar').addEventListener('click', async function(){
+      var qtd = parseInt(document.getElementById('ativacao-qtd-colaboradores').value, 10);
+      if (isNaN(qtd) || qtd < 1){ malotToast('Quantidade inválida.', 'erro'); return; }
+
+      var btn = this; var textoOriginal = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Abrindo pagamento...';
+      try {
+        var def = await malote.rpc('empresa_definir_qtd_colaboradores_contratados', { p_qtd: qtd });
+        if (def.error) throw def.error;
+
+        var resp = await malote.functions.invoke('mp-criar-pagamento', {
+          body: { origem: window.location.origin }
+        });
+        if (resp.error){
+          var msg = 'Não foi possível iniciar o pagamento. Tente novamente em instantes.';
+          try {
+            if (resp.error.context && typeof resp.error.context.json === 'function'){
+              var corpo = await resp.error.context.json();
+              if (corpo && corpo.error) msg = corpo.error;
+            }
+          } catch (e2) { /* usa a mensagem padrão */ }
+          malotToast(msg, 'erro');
+          btn.disabled = false; btn.textContent = textoOriginal;
+          return;
+        }
+        if (resp.data && resp.data.url){
+          window.location.href = resp.data.url;
+        } else {
+          malotToast('Não foi possível iniciar o pagamento. Tente novamente em instantes.', 'erro');
+          btn.disabled = false; btn.textContent = textoOriginal;
+        }
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+        btn.disabled = false; btn.textContent = textoOriginal;
+      }
+    });
+
+    document.getElementById('btn-verificar-liberacao-empresa').addEventListener('click', async function(){
+      var btn = this; btn.disabled = true; btn.textContent = 'Verificando...';
+      try { await carregar(); }
+      finally { btn.disabled = false; btn.textContent = 'Já paguei, verificar liberação'; }
+    });
+
+    async function tratarRetornoPagamento(){
+      var params = new URLSearchParams(window.location.search);
+      var status = params.get('pagamento');
+      if (!status) return;
+      history.replaceState(null, '', window.location.pathname);
+
+      if (status === 'sucesso'){
+        malotToast('Pagamento aprovado! Confirmando liberação...', 'ok');
+        for (var i = 0; i < 4; i++){
+          await new Promise(function(res){ setTimeout(res, 1500); });
+          await carregar();
+          if (empresaAtual && !empresaAtual.bloqueado) break;
+        }
+      } else if (status === 'pendente'){
+        malotToast('Pagamento em processamento. Assim que for aprovado, o acesso libera automaticamente.', 'ok');
+      } else if (status === 'falha'){
+        malotToast('O pagamento não foi concluído. Você pode tentar novamente.', 'erro');
+      }
+    }
+
+    carregar().then(tratarRetornoPagamento);
+
+    // se o navegador restaurar esta página do cache (botão "voltar" no
+    // celular, por exemplo) sem recarregar o JS do zero, força um reload —
+    // assim o checkout de porteiro acima roda de novo e ele não fica preso
+    // numa versão antiga da tela renderizada antes de sair daqui.
+    window.addEventListener('pageshow', function(e){
+      if (e.persisted) location.reload();
+    });
+  </script>
+  <div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="/parceiros/assets/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>

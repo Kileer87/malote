@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Contratar Plano Empresarial — Malote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/parceiros/assets/estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-badge" src="/icons/icon-192.png" alt="Malote">
+      <div><div class="word">Malote</div><div class="sub">Plano Empresarial</div></div>
+    </div>
+    <div class="nav">
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotVoltar('painel.html')">Voltar</button>
+    </div>
+  </div>
+
+  <div class="shell narrow">
+    <div id="carregando" class="center-loading"><span class="spinner"></span> Carregando...</div>
+
+    <div id="sem-permissao" class="card" style="display:none;text-align:center;">
+      <h2>Só o administrador pode contratar o plano</h2>
+      <p class="hint">Fale com o administrador da sua empresa no Malote pra fazer essa contratação.</p>
+      <a class="btn btn-outline" href="painel.html" style="width:100%;">Voltar pro painel</a>
+    </div>
+
+    <div id="conteudo" style="display:none;">
+
+      <!-- PASSO 1: calcular -->
+      <div id="passo-calculo" class="card">
+        <h2>Plano Empresarial</h2>
+        <p class="hint">Cobertura de até 500 colaboradores por R$ 349,00/mês. Acima disso, some R$ 50,00 a cada bloco de 100 colaboradores extras.</p>
+        <div class="table-wrap" style="margin-bottom:16px;">
+          <table>
+            <thead><tr><th>Colaboradores</th><th>Valor mensal</th></tr></thead>
+            <tbody id="tabela-referencia-precos"></tbody>
+          </table>
+        </div>
+        <p class="hint" style="margin-top:-10px;">Acima de 1.000, a regra continua igual: some R$ 50,00 a cada 100 colaboradores extras (o valor abaixo já calcula pra qualquer quantidade).</p>
+        <div class="field">
+          <label>Quantidade de colaboradores</label>
+          <input type="number" id="f-qtd-colaboradores" min="1" step="1" placeholder="Ex: 650">
+        </div>
+        <p class="hint" id="valor-hint" style="margin-top:-4px;font-size:16px;">Valor mensal: <strong>—</strong></p>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-ver-resumo" style="width:100%;">Contratar Plano</button>
+        </div>
+      </div>
+
+      <!-- PASSO 2: resumo + confirmação -->
+      <div id="passo-resumo" class="card" style="display:none;">
+        <h2>Confirme a contratação</h2>
+        <div class="table-wrap">
+          <table>
+            <tbody>
+              <tr><td>Plano contratado</td><td><strong>Plano Empresarial</strong></td></tr>
+              <tr><td>Quantidade de colaboradores</td><td id="resumo-qtd">—</td></tr>
+              <tr><td>Valor mensal</td><td id="resumo-valor">—</td></tr>
+              <tr><td>Regras de cobrança</td><td>Até 500 colaboradores: R$ 349,00/mês. Acima disso: + R$ 50,00 a cada bloco adicional de 100 colaboradores. Cobrança mensal recorrente.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-confirmar-contratacao" style="width:100%;">Confirmar e ir para o pagamento</button>
+        </div>
+        <p class="hint" style="margin-top:10px;margin-bottom:0;text-align:center;"><a href="#" id="link-editar-quantidade">Editar quantidade</a></p>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="/parceiros/assets/supabase-client.js"></script>
+  <script>
+    var sessaoAtual = null;
+    var empresaAtual = null;
+
+    async function carregar(){
+      sessaoAtual = await malotExigirSessao('/parceiros/login.html');
+      if (!sessaoAtual) return;
+
+      var r = await malote.from('condominios').select('*').eq('user_id', sessaoAtual.user.id).maybeSingle();
+      if (r.error && r.error.code !== 'PGRST116'){ document.getElementById('carregando').style.display = 'none'; malotToast(malotErroMsg(r.error), 'erro'); return; }
+
+      var souAdministrador = false;
+      if (r.data){
+        empresaAtual = r.data;
+        souAdministrador = true;
+      } else {
+        var membership = await malote.rpc('minha_empresa_membership');
+        if (membership.error || !membership.data || !membership.data.length){
+          location.href = 'painel.html';
+          return;
+        }
+        var condId = membership.data[0].condominio_id;
+        var r2 = await malote.from('condominios').select('*').eq('id', condId).maybeSingle();
+        if (r2.error || !r2.data){ location.href = 'painel.html'; return; }
+        empresaAtual = r2.data;
+        souAdministrador = membership.data.some(function(m){ return m.papel === 'administrador_corporativo'; });
+      }
+
+      if (empresaAtual.tipo_operacao !== 'empresarial'){
+        location.href = '/sindico/painel.html';
+        return;
+      }
+
+      document.getElementById('carregando').style.display = 'none';
+
+      if (!souAdministrador){
+        document.getElementById('sem-permissao').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('conteudo').style.display = 'block';
+
+      // pré-preenche com a quantidade já contratada antes, ou (se nunca
+      // contratou) com o número de colaboradores já cadastrados agora —
+      // só um ponto de partida, o admin pode digitar qualquer número.
+      var qtdInicial = empresaAtual.qtd_colaboradores_contratados;
+      if (!qtdInicial){
+        var rc = await malote.from('colaboradores').select('id', { count: 'exact', head: true }).eq('condominio_id', empresaAtual.id);
+        qtdInicial = (rc.count && rc.count > 0) ? rc.count : 1;
+      }
+      document.getElementById('f-qtd-colaboradores').value = qtdInicial;
+      atualizarValorHint();
+    }
+
+    // Tabela de referência: até 500 é o preço-base; cada linha seguinte soma
+    // mais um bloco de 100 colaboradores, usando a mesma fórmula compartilhada
+    // (malotCalcularMensalidadeEmpresarial) que calcula o valor ao digitar —
+    // se a regra de preço mudar num lugar só, essa tabela acompanha sozinha.
+    function renderTabelaReferenciaPrecos(){
+      var BASE = 500;
+      var BLOCOS_EXTRAS_MOSTRADOS = 5;
+      var linhas = [{ label: 'Até ' + BASE.toLocaleString('pt-BR'), qtd: BASE }];
+      for (var i = 1; i <= BLOCOS_EXTRAS_MOSTRADOS; i++){
+        var de = BASE + (i - 1) * 100 + 1;
+        var ate = BASE + i * 100;
+        linhas.push({ label: de.toLocaleString('pt-BR') + ' a ' + ate.toLocaleString('pt-BR'), qtd: ate });
+      }
+      document.getElementById('tabela-referencia-precos').innerHTML = linhas.map(function(l){
+        var valor = malotCalcularMensalidadeEmpresarial(l.qtd);
+        return '<tr><td>' + l.label + '</td><td>' + malotFormatarReais(valor) + '/mês</td></tr>';
+      }).join('');
+    }
+    renderTabelaReferenciaPrecos();
+
+    function atualizarValorHint(){
+      var qtd = parseInt(document.getElementById('f-qtd-colaboradores').value, 10);
+      var el = document.getElementById('valor-hint');
+      if (isNaN(qtd) || qtd < 1){
+        el.innerHTML = 'Valor mensal: <strong>—</strong>';
+        return;
+      }
+      var valor = malotCalcularMensalidadeEmpresarial(qtd);
+      el.innerHTML = 'Valor mensal: <strong>' + malotFormatarReais(valor) + '/mês</strong>';
+    }
+    document.getElementById('f-qtd-colaboradores').addEventListener('input', atualizarValorHint);
+
+    document.getElementById('btn-ver-resumo').addEventListener('click', function(){
+      var qtd = parseInt(document.getElementById('f-qtd-colaboradores').value, 10);
+      if (isNaN(qtd) || qtd < 1){ malotToast('Digite a quantidade de colaboradores.', 'erro'); return; }
+      var valor = malotCalcularMensalidadeEmpresarial(qtd);
+      document.getElementById('resumo-qtd').textContent = qtd;
+      document.getElementById('resumo-valor').textContent = malotFormatarReais(valor) + '/mês';
+      document.getElementById('passo-calculo').style.display = 'none';
+      document.getElementById('passo-resumo').style.display = 'block';
+    });
+
+    document.getElementById('link-editar-quantidade').addEventListener('click', function(e){
+      e.preventDefault();
+      document.getElementById('passo-resumo').style.display = 'none';
+      document.getElementById('passo-calculo').style.display = 'block';
+    });
+
+    document.getElementById('btn-confirmar-contratacao').addEventListener('click', async function(){
+      var qtd = parseInt(document.getElementById('f-qtd-colaboradores').value, 10);
+      if (isNaN(qtd) || qtd < 1){ malotToast('Quantidade inválida.', 'erro'); return; }
+
+      var btn = this; var textoOriginal = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Abrindo pagamento...';
+      try {
+        var def = await malote.rpc('empresa_definir_qtd_colaboradores_contratados', { p_qtd: qtd });
+        if (def.error) throw def.error;
+
+        var resp = await malote.functions.invoke('mp-criar-pagamento', {
+          body: { origem: window.location.origin }
+        });
+        if (resp.error){
+          var msg = 'Não foi possível iniciar o pagamento. Tente novamente em instantes.';
+          try {
+            if (resp.error.context && typeof resp.error.context.json === 'function'){
+              var corpo = await resp.error.context.json();
+              if (corpo && corpo.error) msg = corpo.error;
+            }
+          } catch (e2) { /* usa a mensagem padrão */ }
+          malotToast(msg, 'erro');
+          btn.disabled = false; btn.textContent = textoOriginal;
+          return;
+        }
+        if (resp.data && resp.data.url){
+          location.href = resp.data.url;
+        } else {
+          malotToast('Não foi possível iniciar o pagamento. Tente novamente em instantes.', 'erro');
+          btn.disabled = false; btn.textContent = textoOriginal;
+        }
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+        btn.disabled = false; btn.textContent = textoOriginal;
+      }
+    });
+
+    carregar();
+  </script>
+  <div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="/parceiros/assets/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>

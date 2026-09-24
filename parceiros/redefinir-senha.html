@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Redefinir senha — Malote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-badge" src="/icons/icon-192.png" alt="Malote">
+      <div><div class="word">Malote</div><div class="sub">Redefinir senha</div></div>
+    </div>
+  </div>
+
+  <div class="shell narrow">
+    <div id="carregando" class="center-loading"><span class="spinner"></span> Verificando o link...</div>
+
+    <div id="link-invalido" class="card" style="display:none;text-align:center;">
+      <h2>Esse link não é mais válido</h2>
+      <p class="hint">Links de redefinição de senha expiram depois de um tempo, ou já podem ter sido usados. Peça um novo na tela de entrar.</p>
+      <a class="btn btn-primary" href="login.html" style="width:100%;">Voltar pro login</a>
+    </div>
+
+    <div id="conteudo" class="card" style="display:none;">
+      <h2>Criar nova senha</h2>
+      <div class="field"><label>Nova senha</label><div class="campo-senha"><input type="password" id="f-nova-senha" placeholder="Mínimo 6 caracteres"><button type="button" class="btn-toggle-senha" data-toggle-senha="f-nova-senha" tabindex="-1" aria-label="Mostrar senha"></button></div></div>
+      <div class="field"><label>Confirmar nova senha</label><div class="campo-senha"><input type="password" id="f-confirmar-senha" placeholder="Digite de novo"><button type="button" class="btn-toggle-senha" data-toggle-senha="f-confirmar-senha" tabindex="-1" aria-label="Mostrar senha"></button></div></div>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="btn-salvar" style="width:100%;">Salvar nova senha</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="assets/supabase-client.js"></script>
+  <script>
+    var sessaoDeRecuperacaoOk = false;
+
+    // O link do e-mail traz o token de recuperação no próprio endereço; o
+    // supabase-js já detecta isso sozinho ao carregar a página (comportamento
+    // padrão do client) e dispara este evento assim que a sessão temporária
+    // de recuperação fica pronta pra usar.
+    malote.auth.onAuthStateChange(function(event, session){
+      if (event === 'PASSWORD_RECOVERY' && session){
+        sessaoDeRecuperacaoOk = true;
+        mostrarFormulario();
+      }
+    });
+
+    function mostrarFormulario(){
+      document.getElementById('carregando').style.display = 'none';
+      document.getElementById('link-invalido').style.display = 'none';
+      document.getElementById('conteudo').style.display = 'block';
+    }
+
+    // Se o evento PASSWORD_RECOVERY não disparar (link inválido/expirado, ou
+    // a pessoa só abriu a página direto sem vir de um link de verdade), dá
+    // um tempo curto pro supabase-js processar a URL e, se mesmo assim não
+    // houver sessão nenhuma, mostra o aviso de link inválido.
+    setTimeout(async function(){
+      if (sessaoDeRecuperacaoOk) return;
+      var s = await malotSessao();
+      if (s){ mostrarFormulario(); return; }
+      document.getElementById('carregando').style.display = 'none';
+      document.getElementById('link-invalido').style.display = 'block';
+    }, 2500);
+
+    document.getElementById('btn-salvar').addEventListener('click', async function(){
+      var senha = document.getElementById('f-nova-senha').value;
+      var confirmar = document.getElementById('f-confirmar-senha').value;
+      if (!senha || senha.length < 6){ malotToast('A senha precisa ter pelo menos 6 caracteres.', 'erro'); return; }
+      if (senha !== confirmar){ malotToast('As senhas digitadas são diferentes.', 'erro'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+      try {
+        var { error } = await malote.auth.updateUser({ password: senha });
+        if (error) throw error;
+        malotToast('Senha alterada! Entrando...', 'ok');
+        setTimeout(function(){ location.href = 'login.html'; }, 900);
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+        btn.disabled = false; btn.textContent = 'Salvar nova senha';
+      }
+    });
+  </script>
+  <div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="/parceiros/assets/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>

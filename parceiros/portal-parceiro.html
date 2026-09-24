@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Portal do parceiro — Malote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-badge" src="/icons/icon-192.png" alt="Malote">
+      <div><div class="word">Malote</div><div class="sub">Portal do parceiro</div></div>
+    </div>
+    <div class="nav">
+      <a href="#" class="active" data-aba="resumo">Resumo</a>
+      <a href="#" data-aba="carteira">Carteira</a>
+      <a href="#" data-aba="comissoes">Comissões</a>
+      <a href="#" data-aba="relatorio">Relatório</a>
+      <a href="#" data-aba="perfil">Meu perfil</a>
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotVoltar('../index.html')">Voltar</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="malotSair()">Sair</button>
+    </div>
+  </div>
+
+  <div class="shell">
+    <div id="carregando" class="center-loading"><span class="spinner"></span> Carregando...</div>
+
+    <div id="banner-claim" class="card" style="display:none;">
+      <h2>Confirmando seu cadastro de parceiro...</h2>
+      <p class="hint" id="claim-msg">Um instante.</p>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="btn-tentar-claim">Tentar novamente</button>
+        <button type="button" class="btn btn-outline" onclick="malotSair()">Entrar com outro e-mail</button>
+      </div>
+    </div>
+
+    <div id="conteudo" style="display:none;">
+      <div class="card">
+        <h2 id="parceiro-nome">—</h2>
+        <p class="hint" style="margin-bottom:0;">Código de indicação: <span class="mono" id="parceiro-codigo">—</span></p>
+      </div>
+
+      <div id="aba-resumo">
+        <div class="stat-grid">
+          <div class="stat"><div class="num" id="stat-clientes">0</div><div class="lbl">Clientes na carteira</div></div>
+          <div class="stat"><div class="num" id="stat-pendente">R$ 0,00</div><div class="lbl">Comissões pendentes</div></div>
+          <div class="stat"><div class="num" id="stat-paga">R$ 0,00</div><div class="lbl">Comissões pagas</div></div>
+        </div>
+
+        <div class="card">
+          <h2>Seu link de indicação</h2>
+          <div class="ref-box">
+            <span class="link mono" id="ref-link">—</span>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-copiar-link">Copiar</button>
+            <a class="btn btn-primary btn-sm" id="btn-whatsapp" target="_blank" rel="noopener">Enviar no WhatsApp</a>
+          </div>
+          <div class="field" style="margin-top:14px;">
+            <label>Mensagem do WhatsApp (editável)</label>
+            <textarea id="msg-whatsapp" rows="3"></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Chamar um cliente específico no WhatsApp</h2>
+          <div class="form-grid">
+            <div class="field full"><label>WhatsApp do cliente (com DDD)</label><input type="text" id="pc-whatsapp-direto" placeholder="Ex: 11 98765-4321"></div>
+          </div>
+          <div class="actions"><a class="btn btn-primary" id="btn-whatsapp-direto" target="_blank" rel="noopener" href="#">Abrir conversa no WhatsApp</a></div>
+        </div>
+      </div>
+
+      <div id="aba-carteira" style="display:none;">
+        <div class="card">
+          <h2>Cadastro manual (alternativa)</h2>
+          <p class="hint">O jeito normal é mandar o seu link de indicação (aba Resumo) e deixar o síndico se cadastrar sozinho. Use este formulário só quando isso não for possível — por exemplo, fechou pessoalmente e quer deixar já registrado. O e-mail é obrigatório: é com ele que o síndico cria a própria conta de login depois (na mesma tela pública de cadastro) e cai direto na tela de pagamento — Pix ou cartão, liberação automática. Sem o e-mail certo, ele não consegue pagar sozinho.</p>
+          <div class="form-grid">
+            <div class="field"><label>Nome do condomínio</label><input type="text" id="pc-nome" placeholder="Ex: Residencial Jardim das Flores"></div>
+            <div class="field"><label>E-mail do síndico</label><input type="email" id="pc-email" placeholder="o mesmo que ele vai usar pra criar a conta dele"></div>
+          </div>
+          <div class="actions"><button type="button" class="btn btn-primary" id="btn-cadastrar-cliente-parceiro">Cadastrar cliente</button></div>
+          <div id="pc-sucesso" class="ref-box" style="display:none;margin-top:14px;"></div>
+        </div>
+
+        <div class="card">
+          <h2>Carteira</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Condomínio</th><th>Indicado em</th><th>Última mensalidade</th><th>Status</th></tr></thead>
+              <tbody id="tbl-carteira"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="carteira-vazia" style="display:none;">Nenhum cliente na carteira ainda.</div>
+        </div>
+      </div>
+
+      <div id="aba-comissoes" style="display:none;">
+        <div class="card">
+          <h2>Extrato de comissões</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Condomínio</th><th>Competência</th><th>Valor</th><th>Status</th><th>Pago em</th></tr></thead>
+              <tbody id="tbl-comissoes"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="comissoes-vazia" style="display:none;">Nenhuma comissão ainda.</div>
+        </div>
+      </div>
+
+      <div id="aba-relatorio" style="display:none;">
+        <div class="card">
+          <h2>Enviar relatório pro admin</h2>
+          <p class="hint" id="relatorio-pct-hint">Você recebe <strong>—</strong> de cada mensalidade paga pelos clientes que trouxe.</p>
+          <div class="stat-grid">
+            <div class="stat"><div class="num" id="rel-clientes-total">0</div><div class="lbl">Clientes na carteira</div></div>
+            <div class="stat"><div class="num" id="rel-clientes-mes">0</div><div class="lbl">Novos este mês</div></div>
+            <div class="stat"><div class="num" id="rel-pendente">R$ 0,00</div><div class="lbl">Comissão pendente</div></div>
+            <div class="stat"><div class="num" id="rel-paga">R$ 0,00</div><div class="lbl">Comissão já paga</div></div>
+          </div>
+          <div class="field">
+            <label>Mensagem (opcional)</label>
+            <textarea id="rel-mensagem" rows="3" placeholder="Ex: pode revisar minhas comissões pendentes desse mês?"></textarea>
+          </div>
+          <div class="actions"><button type="button" class="btn btn-primary" id="btn-enviar-relatorio">Enviar relatório pro admin</button></div>
+        </div>
+
+        <div class="card">
+          <h2>Relatórios enviados</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Enviado em</th><th>Clientes</th><th>Pendente</th><th>Paga</th><th>Mensagem</th><th>Status</th></tr></thead>
+              <tbody id="tbl-relatorios"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="relatorios-vazio" style="display:none;">Nenhum relatório enviado ainda.</div>
+        </div>
+      </div>
+
+      <div id="aba-perfil" style="display:none;">
+        <div class="card">
+          <h2>Meu perfil</h2>
+          <div class="form-grid">
+            <div class="field"><label>Nome</label><input type="text" id="perfil-nome" disabled></div>
+            <div class="field"><label>E-mail</label><input type="text" id="perfil-email" disabled></div>
+          </div>
+          <p class="hint">Pra alterar nome ou e-mail de cadastro, fale com o administrador.</p>
+        </div>
+        <div class="card">
+          <h2>Trocar senha</h2>
+          <div class="field"><label>Nova senha</label><div class="campo-senha"><input type="password" id="nova-senha" placeholder="Mínimo 6 caracteres"><button type="button" class="btn-toggle-senha" data-toggle-senha="nova-senha" tabindex="-1" aria-label="Mostrar senha"></button></div></div>
+          <div class="actions"><button type="button" class="btn btn-primary" id="btn-trocar-senha">Salvar nova senha</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="assets/supabase-client.js"></script>
+  <script>
+    var parceiroAtual = null;
+
+    document.querySelectorAll('.nav a[data-aba]').forEach(function(a){
+      a.addEventListener('click', function(e){
+        e.preventDefault();
+        document.querySelectorAll('.nav a[data-aba]').forEach(function(x){ x.classList.remove('active'); });
+        this.classList.add('active');
+        ['resumo','carteira','comissoes','relatorio','perfil'].forEach(function(id){
+          document.getElementById('aba-'+id).style.display = (id === a.getAttribute('data-aba')) ? 'block' : 'none';
+        });
+      });
+    });
+
+    function montarLinkIndicacao(codigo){
+      return location.origin + '/indicar/' + encodeURIComponent(codigo);
+    }
+
+    async function carregarResumoECarteira(){
+      var carteira = await malote.rpc('parceiro_carteira');
+      var lista = carteira.data || [];
+      document.getElementById('stat-clientes').textContent = lista.length;
+
+      var tbl = document.getElementById('tbl-carteira');
+      tbl.innerHTML = '';
+      lista.forEach(function(c){
+        var st = c.ultimo_pagamento_status;
+        var badge = st === 'pago' ? '<span class="badge badge-ok">pago</span>'
+          : (st === 'pendente' ? '<span class="badge badge-warn">pendente</span>'
+          : (st ? '<span class="badge badge-danger">' + st + '</span>' : '<span class="badge badge-muted">sem pagamento</span>'));
+        tbl.innerHTML += '<tr><td>' + esc(c.condominio_nome) + '</td><td>' + malotFormatarData(c.indicado_em) + '</td>' +
+          '<td>' + malotFormatarCompetencia(c.ultima_competencia) + '</td><td>' + badge + '</td></tr>';
+      });
+      document.getElementById('carteira-vazia').style.display = lista.length ? 'none' : 'block';
+    }
+
+    async function carregarComissoes(){
+      var r = await malote.from('comissoes_parceiro')
+        .select('condominio_nome, competencia, valor_centavos, status, pago_em, criado_em')
+        .order('criado_em', { ascending: false });
+      var lista = (r.data || []);
+
+      var pendente = 0, paga = 0;
+      lista.forEach(function(c){
+        if (c.status === 'pendente') pendente += c.valor_centavos;
+        if (c.status === 'paga') paga += c.valor_centavos;
+      });
+      document.getElementById('stat-pendente').textContent = malotFormatarCentavos(pendente);
+      document.getElementById('stat-paga').textContent = malotFormatarCentavos(paga);
+
+      var tbl = document.getElementById('tbl-comissoes');
+      tbl.innerHTML = '';
+      lista.forEach(function(c){
+        var badge = c.status === 'paga' ? '<span class="badge badge-ok">paga</span>'
+          : (c.status === 'pendente' ? '<span class="badge badge-warn">pendente</span>' : '<span class="badge badge-danger">cancelada</span>');
+        tbl.innerHTML += '<tr><td>' + esc(c.condominio_nome || '—') + '</td><td>' + malotFormatarCompetencia(c.competencia) + '</td>' +
+          '<td>' + malotFormatarCentavos(c.valor_centavos) + '</td><td>' + badge + '</td><td>' + malotFormatarData(c.pago_em) + '</td></tr>';
+      });
+      document.getElementById('comissoes-vazia').style.display = lista.length ? 'none' : 'block';
+    }
+
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+    function mesmoMesAtual(dataISO){
+      if (!dataISO) return false;
+      var d = new Date(dataISO);
+      var hoje = new Date();
+      return d.getFullYear() === hoje.getFullYear() && d.getMonth() === hoje.getMonth();
+    }
+
+    async function carregarRelatorio(){
+      var pct = await malote.rpc('meu_percentual_comissao');
+      if (!pct.error && pct.data != null){
+        var pctTexto = Math.round(pct.data * 10000) / 100 + '%';
+        document.getElementById('relatorio-pct-hint').innerHTML = 'Você recebe <strong>' + pctTexto + '</strong> de cada mensalidade paga pelos clientes que trouxe.';
+      }
+
+      var carteira = await malote.rpc('parceiro_carteira');
+      var lista = carteira.data || [];
+      var clientesMes = lista.filter(function(c){ return mesmoMesAtual(c.indicado_em); }).length;
+      document.getElementById('rel-clientes-total').textContent = lista.length;
+      document.getElementById('rel-clientes-mes').textContent = clientesMes;
+
+      var com = await malote.from('comissoes_parceiro').select('valor_centavos, status');
+      var pendente = 0, paga = 0;
+      (com.data || []).forEach(function(c){
+        if (c.status === 'pendente') pendente += c.valor_centavos;
+        if (c.status === 'paga') paga += c.valor_centavos;
+      });
+      document.getElementById('rel-pendente').textContent = malotFormatarCentavos(pendente);
+      document.getElementById('rel-paga').textContent = malotFormatarCentavos(paga);
+
+      await carregarHistoricoRelatorios();
+    }
+
+    async function carregarHistoricoRelatorios(){
+      var r = await malote.from('relatorios_parceiro').select('*').order('criado_em', { ascending: false });
+      var lista = r.data || [];
+      var tbl = document.getElementById('tbl-relatorios');
+      tbl.innerHTML = '';
+      lista.forEach(function(rel){
+        var badge = rel.status === 'resolvido' ? '<span class="badge badge-ok">resolvido</span>'
+          : (rel.status === 'visto' ? '<span class="badge badge-warn">visto</span>' : '<span class="badge badge-muted">novo</span>');
+        tbl.innerHTML += '<tr>' +
+          '<td>' + malotFormatarData(rel.criado_em) + '</td>' +
+          '<td>' + rel.clientes_total + ' (' + rel.clientes_mes + ' no mês)</td>' +
+          '<td>' + malotFormatarCentavos(rel.comissao_pendente_centavos) + '</td>' +
+          '<td>' + malotFormatarCentavos(rel.comissao_paga_centavos) + '</td>' +
+          '<td>' + (rel.mensagem ? esc(rel.mensagem) : '<span class="hint" style="margin:0;">—</span>') + '</td>' +
+          '<td>' + badge + '</td>' +
+          '</tr>';
+      });
+      document.getElementById('relatorios-vazio').style.display = lista.length ? 'none' : 'block';
+    }
+
+    document.getElementById('btn-enviar-relatorio').addEventListener('click', async function(){
+      var mensagem = document.getElementById('rel-mensagem').value.trim();
+      var btn = this; btn.disabled = true; btn.textContent = 'Enviando...';
+      try {
+        var r = await malote.rpc('parceiro_enviar_relatorio', { p_mensagem: mensagem || null });
+        if (r.error) throw r.error;
+        malotToast('Relatório enviado pro admin!', 'ok');
+        document.getElementById('rel-mensagem').value = '';
+        await carregarHistoricoRelatorios();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Enviar relatório pro admin';
+      }
+    });
+
+    document.getElementById('btn-cadastrar-cliente-parceiro').addEventListener('click', async function(){
+      var nome = document.getElementById('pc-nome').value.trim();
+      var email = document.getElementById('pc-email').value.trim();
+      if (!nome){ malotToast('Preencha o nome do condomínio.', 'erro'); return; }
+      if (!email){ malotToast('Preencha o e-mail do síndico — sem ele, o cliente não consegue criar login nem pagar sozinho.', 'erro'); return; }
+
+      var btn = this; btn.disabled = true; btn.textContent = 'Cadastrando...';
+      try {
+        var r = await malote.rpc('parceiro_cadastrar_cliente', { p_nome: nome, p_email: email });
+        if (r.error) throw r.error;
+        malotToast('Cliente cadastrado!', 'ok');
+
+        var linkCadastro = location.origin + '/parceiros/cadastro.html';
+        var caixa = document.getElementById('pc-sucesso');
+        caixa.style.display = 'flex';
+        caixa.innerHTML =
+          '<span class="link" style="flex:1;">Agora avise o síndico: ele precisa criar a conta em <strong class="mono">' + esc(linkCadastro) + '</strong> usando o e-mail <strong>' + esc(email) + '</strong>. Assim que ele pagar (Pix ou cartão), o acesso libera sozinho e sua comissão é gerada na hora.</span>' +
+          '<button type="button" class="btn btn-outline btn-sm" id="btn-copiar-link-cadastro">Copiar link</button>';
+        document.getElementById('btn-copiar-link-cadastro').addEventListener('click', function(){
+          navigator.clipboard.writeText(linkCadastro).then(function(){ malotToast('Link copiado!', 'ok'); });
+        });
+
+        document.getElementById('pc-nome').value = '';
+        document.getElementById('pc-email').value = '';
+        await carregarResumoECarteira();
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Cadastrar cliente';
+      }
+    });
+
+    async function carregarPortal(){
+      document.getElementById('parceiro-nome').textContent = parceiroAtual.nome;
+      document.getElementById('parceiro-codigo').textContent = parceiroAtual.codigo;
+      document.getElementById('perfil-nome').value = parceiroAtual.nome;
+      document.getElementById('perfil-email').value = parceiroAtual.email;
+
+      var link = montarLinkIndicacao(parceiroAtual.codigo);
+      document.getElementById('ref-link').textContent = link;
+      var msgPadrao = 'Oi! Passando pra te indicar o Malote, o sistema de encomendas do condomínio. Cria sua conta por aqui: ' + link;
+      document.getElementById('msg-whatsapp').value = msgPadrao;
+      atualizarLinkWhatsapp();
+
+      document.getElementById('btn-copiar-link').addEventListener('click', function(){
+        navigator.clipboard.writeText(link).then(function(){ malotToast('Link copiado!', 'ok'); })
+          .catch(function(){ malotToast('Não deu pra copiar automaticamente. Selecione o link e copie.', 'erro'); });
+      });
+      document.getElementById('msg-whatsapp').addEventListener('input', function(){
+        atualizarLinkWhatsapp();
+        atualizarWhatsappDireto();
+      });
+      document.getElementById('pc-whatsapp-direto').addEventListener('input', atualizarWhatsappDireto);
+      document.getElementById('btn-whatsapp-direto').addEventListener('click', function(e){
+        var numero = digitsSoNumeros(document.getElementById('pc-whatsapp-direto').value);
+        if (!numero){ e.preventDefault(); malotToast('Digite o WhatsApp do cliente primeiro.', 'erro'); }
+      });
+      atualizarWhatsappDireto();
+
+      await carregarResumoECarteira();
+      await carregarComissoes();
+      await carregarRelatorio();
+
+      document.getElementById('conteudo').style.display = 'block';
+    }
+
+    function atualizarLinkWhatsapp(){
+      var msg = document.getElementById('msg-whatsapp').value;
+      document.getElementById('btn-whatsapp').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+    }
+
+    function digitsSoNumeros(s){ return String(s || '').replace(/\D/g, ''); }
+    function atualizarWhatsappDireto(){
+      var numero = digitsSoNumeros(document.getElementById('pc-whatsapp-direto').value);
+      if (numero.length > 0 && numero.length <= 11) numero = '55' + numero; // DDI do Brasil, se a pessoa não digitou
+      var msg = document.getElementById('msg-whatsapp').value;
+      document.getElementById('btn-whatsapp-direto').href = numero
+        ? ('https://wa.me/' + numero + '?text=' + encodeURIComponent(msg))
+        : '#';
+    }
+
+    function limparNomeParceiroPendente(){
+      try { localStorage.removeItem('malote_nome_parceiro_pendente'); } catch(e){}
+    }
+
+    async function tentarObterParceiro(){
+      var pid = await malote.rpc('auth_partner_id');
+      if (pid.error) throw pid.error;
+      if (pid.data){
+        var r = await malote.from('parceiros').select('*').eq('id', pid.data).single();
+        if (r.error) throw r.error;
+        limparNomeParceiroPendente();
+        return r.data;
+      }
+
+      // ainda não reivindicado — tenta casar pelo e-mail da conta logada
+      // (caso o admin já tenha pré-cadastrado esse parceiro)
+      var claim = await malote.rpc('reivindicar_parceiro');
+      if (!claim.error && claim.data){
+        limparNomeParceiroPendente();
+        return claim.data;
+      }
+
+      // sem cadastro prévio: se veio do auto-cadastro (cadastro.html),
+      // completa sozinho usando o nome que ficou salvo localmente até a
+      // confirmação do e-mail.
+      var nomePendente = null;
+      try { nomePendente = localStorage.getItem('malote_nome_parceiro_pendente'); } catch(e){}
+      if (nomePendente){
+        var criado = await malote.rpc('cadastrar_parceiro_self', { p_nome: nomePendente });
+        if (criado.error) throw criado.error;
+        limparNomeParceiroPendente();
+        return criado.data;
+      }
+
+      if (claim.error) throw claim.error;
+      if (!claim.data){
+        var erroSemParceiro = new Error('Esta conta não está cadastrada como parceiro.');
+        erroSemParceiro.semParceiro = true;
+        throw erroSemParceiro;
+      }
+      return claim.data;
+    }
+
+    async function iniciar(){
+      var sessao = await malotExigirSessao('login.html');
+      if (!sessao) return;
+
+      try {
+        parceiroAtual = await tentarObterParceiro();
+        document.getElementById('carregando').style.display = 'none';
+        await carregarPortal();
+      } catch (err) {
+        document.getElementById('carregando').style.display = 'none';
+        document.getElementById('claim-msg').textContent = malotErroMsg(err);
+        document.getElementById('banner-claim').style.display = 'block';
+      }
+    }
+
+    document.getElementById('btn-tentar-claim').addEventListener('click', function(){
+      document.getElementById('banner-claim').style.display = 'none';
+      document.getElementById('carregando').style.display = 'flex';
+      iniciar();
+    });
+
+    document.getElementById('btn-trocar-senha').addEventListener('click', async function(){
+      var nova = document.getElementById('nova-senha').value;
+      if (!nova || nova.length < 6){ malotToast('Digite uma senha com pelo menos 6 caracteres.', 'erro'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+      try {
+        var { error } = await malote.auth.updateUser({ password: nova });
+        if (error) throw error;
+        malotToast('Senha atualizada!', 'ok');
+        document.getElementById('nova-senha').value = '';
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Salvar nova senha';
+      }
+    });
+
+    iniciar();
+  </script>
+  <div class="cq-credit" title="Sistema desenvolvido por Cleiton Queiroz"><span>desenvolvido por</span><img src="/parceiros/assets/logo-cq.png" alt="Cleiton Queiroz — Soluções em Tecnologia"></div>
+</body>
+</html>
