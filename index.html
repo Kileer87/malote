@@ -324,6 +324,21 @@
   var chosenResidentId = '';
   var manualMode = false;
 
+  // ---- Bipagem rápida (leitor de código de barras Bluetooth) ----
+  // Modo separado do fluxo normal (foto/OCR/manual) de propósito: aqui o
+  // porteiro bipa várias etiquetas em sequência, sem escolher morador na
+  // hora — só depois é que ele identifica cada uma, com calma, na fila
+  // abaixo. Usa suas próprias variáveis pra não se misturar com o estado
+  // do fluxo de "1. Registrar encomenda" (photoDataUrl, manualMode etc.).
+  var modoBipagem = false;
+  var bipagemBusy = false;
+  var bipagemUltimas = [];       // últimas bipadas desta sessão: [{codigo, hora}], mais recente primeiro
+  var identificandoId = null;    // id da encomenda (bipada, pendente) que está sendo identificada agora
+  var identBusy = false;
+  var identChosenResidentId = '';
+  var identManualMode = false;
+  var identFormDraft = null;     // { remetente, obs, appEntrega, manBloco, manApto, manNome, manTelefone }
+
   var signingPackageId = null;
   var expandedSigId = null;
   var sigCtx = null;
@@ -601,6 +616,14 @@
     var el = document.getElementById('app');
     el.innerHTML = renderApp();
     setupSigCanvas();
+    // Todo render() enquanto o modo de bipagem está aberto reconstrói o
+    // <input> do zero (innerHTML inteiro) — sem isso o campo perde o foco a
+    // cada bipada e o leitor Bluetooth (que só "digita" enquanto o campo
+    // está focado) para de funcionar depois da primeira etiqueta.
+    if (modoBipagem){
+      var campoBip = document.getElementById('f-bipagem');
+      if (campoBip) campoBip.focus();
+    }
     if (!ocrBusy && !carregandoDados && !erroConexaoInicial) saveState();
   }
 
@@ -700,6 +723,92 @@
     return '<button type="button" class="tab-btn' + (tab===id?' active':'') + '" data-action="tab" data-tab="' + id + '">' + esc(label) + '</button>';
   }
 
+  function renderFilaIdentificacao(){
+    var pendentes = packages.filter(function(p){ return p.pendenteIdentificacao; })
+      .sort(function(a,b){ return new Date(b.criadoEm) - new Date(a.criadoEm); });
+    if (!pendentes.length) return '';
+    var html = '<div class="card"><h2>Aguardando identificação (' + pendentes.length + ')</h2>';
+    html += '<div class="hint" style="margin-top:-4px;">Bipadas com o leitor Bluetooth, ainda sem ' + (modoEmpresarial() ? 'colaborador' : 'morador') + ' escolhido.</div>';
+    pendentes.forEach(function(p){
+      html += '<div class="hist-item">';
+      html += '<span><strong>Código ' + esc(p.codigo) + '</strong></span>';
+      html += '<span class="hwhen">' + fmtWhen(p.criadoEm) + '</span>';
+      html += '<button type="button" class="btn btn-primary btn-sm" data-action="identificar-bipado" data-id="' + p.id + '">Identificar</button>';
+      html += '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderBipagem(){
+    var html = '<div class="card"><h2>Bipagem rápida</h2>';
+    html += '<div class="hint" style="margin-top:-4px;">Aponte o leitor Bluetooth pra etiqueta e bipe — cada bipada conta na hora, sem precisar escolher ' + (modoEmpresarial() ? 'colaborador' : 'morador') + ' agora. Depois é só identificar cada uma com calma, na fila "Aguardando identificação".</div>';
+    html += '<div class="stat-row" style="margin:14px 0;">' + statTile('Bipadas hoje', contaBipadasHoje()) + '</div>';
+    html += '<div class="field full"><label>Campo do leitor</label>';
+    html += '<input type="text" id="f-bipagem" inputmode="none" autocomplete="off" placeholder="Aponte o leitor aqui e bipe..." style="font-size:16px;">';
+    html += '<div class="hint">Este campo precisa continuar em foco pro leitor Bluetooth funcionar — se tocar em outro lugar da tela, toque aqui de novo antes de bipar.</div></div>';
+    if (bipagemUltimas.length){
+      html += '<div class="hint" style="margin-bottom:6px;"><strong>Últimas bipadas:</strong></div>';
+      bipagemUltimas.forEach(function(b){
+        html += '<div class="hist-item"><span>' + esc(b.codigo) + '</span><span class="hwhen">' + b.hora + '</span></div>';
+      });
+    }
+    html += '<div class="actions"><button type="button" class="btn btn-primary" data-action="concluir-bipagem">Concluir bipagem</button></div>';
+    html += '</div>';
+    return html;
+  }
+
+  function renderIdentificarBipado(){
+    var p = packages.filter(function(x){ return x.id === identificandoId; })[0];
+    if (!p){ identificandoId = null; return ''; }
+    var html = '<div class="card"><h2>Identificar encomenda bipada</h2>';
+    html += '<div class="hint" style="margin-top:-4px;">Código ' + esc(p.codigo) + ' · bipada ' + fmtWhen(p.criadoEm) + '</div>';
+    html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="cancelar-identificacao">&larr; Deixar pra depois</button></div>';
+
+    var labelSel = modoEmpresarial() ? 'Colaborador' : 'Morador';
+    html += '<div class="field" style="margin-top:0;"><label>' + labelSel + '</label><select data-action="ident-resident-select">';
+    html += '<option value="">' + (modoEmpresarial() ? 'Selecione unidade / setor / nome...' : 'Selecione bloco / apto / nome...') + '</option>';
+    sortedResidents().forEach(function(r){
+      var rotulo = modoEmpresarial()
+        ? (r.bloco ? esc(r.bloco) + ' - ' : '') + esc(r.apto) + ' - ' + esc(r.nome)
+        : (r.bloco ? 'Bloco ' + esc(r.bloco) + ' - ' : '') + 'Apto ' + esc(r.apto) + ' - ' + esc(r.nome);
+      html += '<option value="' + r.id + '"' + (r.id===identChosenResidentId?' selected':'') + '>' + rotulo + '</option>';
+    });
+    html += '<option value="__manual__"' + (identManualMode && !identChosenResidentId ? ' selected' : '') + '>+ ' + labelSel + ' não cadastrado (digitar manualmente)</option>';
+    html += '</select>';
+    if (!residents.length) html += '<div class="hint">' + (modoEmpresarial() ? 'Nenhum colaborador cadastrado ainda. Cadastre no painel da empresa.' : 'Nenhum morador cadastrado ainda nesta versão. Cadastre na aba Moradores.') + '</div>';
+    html += '</div>';
+    if (identManualMode && !identChosenResidentId){
+      var pd = identFormDraft;
+      html += '<div class="form-grid">';
+      if (temBlocos() || modoEmpresarial()) html += fieldInput('ident-manBloco', modoEmpresarial()?'Unidade':'Bloco', pd?pd.manBloco:'', 'Ex: 2 ou Jasmim');
+      html += fieldInput('ident-manApto', modoEmpresarial()?'Setor':'Apto', pd?pd.manApto:'', 'Ex: 002', (temBlocos() || modoEmpresarial())?'':'full');
+      html += fieldInput('ident-manNome', modoEmpresarial()?'Nome do colaborador':'Nome do morador', pd?pd.manNome:'','Ex: Cleiton','full');
+      html += fieldInput('ident-manTelefone','WhatsApp (com DDD)', pd?pd.manTelefone:'','Ex: 11 98765-4321','full');
+      html += '</div>';
+    }
+
+    html += '<div class="form-grid">';
+    html += '<div class="field full"><label>Tipo de entrega</label><select id="f-ident-app-entrega">';
+    html += '<option value=""' + (identFormDraft && identFormDraft.appEntrega ? '' : ' selected') + '>Encomenda (não é comida)</option>';
+    ['iFood','Rappi','Uber Eats','99Food','Outro app de comida'].forEach(function(a){
+      html += '<option value="' + a + '"' + (identFormDraft && identFormDraft.appEntrega === a ? ' selected' : '') + '>' + a + '</option>';
+    });
+    html += '</select></div>';
+    html += '<div class="field full"><label>Loja / remetente</label><input type="text" id="f-ident-remetente" placeholder="Ex: Mercado Livre" value="' + esc(identFormDraft ? identFormDraft.remetente : '') + '">';
+    html += '<div class="chips">';
+    ['Mercado Livre','Amazon','Shopee','Correios','Shein','Outro'].forEach(function(c){
+      html += '<button type="button" class="chip" data-action="ident-chip-remetente" data-val="' + c + '">' + c + '</button>';
+    });
+    html += '</div></div>';
+    html += '<div class="field full"><label>Observação (opcional)</label><textarea id="f-ident-obs" placeholder="Ex: caixa grande...">' + esc(identFormDraft ? identFormDraft.obs : '') + '</textarea></div>';
+    html += '</div>';
+
+    html += '<div class="actions"><button type="button" class="btn btn-primary" data-action="confirmar-identificacao" data-id="' + p.id + '"' + (identBusy ? ' disabled' : '') + '>' + (identBusy ? 'Salvando...' : 'Confirmar identificação') + '</button></div>';
+    html += '</div>';
+    return html;
+  }
+
   function renderLer(){
     var html = '';
     if (lastRegisteredId){
@@ -729,6 +838,11 @@
       }
     }
 
+    if (identificandoId) return renderIdentificarBipado();
+    if (modoBipagem) return renderBipagem();
+
+    html += renderFilaIdentificacao();
+
     html += '<div class="card"><h2>1. Registrar encomenda</h2>';
     if (!photoDataUrl){
       html += '<div class="capture-options">';
@@ -744,6 +858,7 @@
         '<input type="file" accept="image/*" data-action="photo-input" style="display:none;"></label>';
       html += '</div>';
       html += '<button type="button" class="btn btn-outline manual-btn" data-action="manual-entry">' + ICON_EDIT + ' Preencher manualmente, sem foto</button>';
+      html += '<button type="button" class="btn btn-outline manual-btn" data-action="abrir-bipagem" style="margin-top:8px;">📡 Bipar com leitor Bluetooth</button>';
     } else {
       html += '<div class="preview-wrap"><img src="' + photoDataUrl + '" alt="Foto da etiqueta">';
       html += '<div>';
@@ -1370,7 +1485,7 @@
     } else {
       var info = codigoRetiradaInfo;
       html += '<p class="hint" style="margin-bottom:4px;">Código válido para:</p>';
-      html += '<p style="margin:0 0 4px;"><strong>' + esc(info.morador_nome) + '</strong>' + (info.morador_bloco ? ' · ' + (modoEmpresarial() ? esc(info.morador_bloco) : 'Bloco ' + esc(info.morador_bloco)) : '') + ' · ' + (modoEmpresarial() ? esc(info.morador_apto) : 'Apto ' + esc(info.morador_apto)) + '</p>';
+      html += '<p style="margin:0 0 4px;"><strong>' + esc(info.morador_nome) + '</strong>' + (info.morador_bloco ? ' · ' + (modoEmpresarial() ? esc(info.morador_bloco) : 'Bloco ' + esc(info.morador_bloco)) : '') + (info.morador_apto ? ' · ' + (modoEmpresarial() ? esc(info.morador_apto) : 'Apto ' + esc(info.morador_apto)) : '') + '</p>';
       html += '<p class="hint" style="margin-top:0;">' + info.qtd_pendentes + ' encomenda(s) aguardando serão liberadas.</p>';
       html += '<div class="actions">';
       html += '<button type="button" class="btn btn-primary" data-action="confirmar-codigo-retirada"' + (codigoRetiradaBusy ? ' disabled' : '') + '>' + (codigoRetiradaBusy ? 'Confirmando...' : 'Confirmar retirada') + '</button>';
@@ -1448,7 +1563,8 @@
       residentId: row.resident_id || row.colaborador_id || null, bloco: row.bloco || '', apto: row.apto || '',
       nomeAvulso: row.nome_avulso || '', telefoneAvulso: row.telefone_avulso || '', appEntrega: row.app_entrega || null,
       retiradoEm: row.retirado_em || null, retiradoPor: row.retirado_por || '', retiradoAssinatura: row.retirado_assinatura || null,
-      fotoPath: row.foto_path || null
+      fotoPath: row.foto_path || null,
+      origemBipagem: !!row.origem_bipagem, pendenteIdentificacao: !!row.pendente_identificacao
     };
   }
   function rowFromEncomenda(p){
@@ -1457,7 +1573,8 @@
       nome_avulso: p.nomeAvulso || '', telefone_avulso: p.telefoneAvulso || '', codigo: p.codigo || '', remetente: p.remetente || '',
       observacao: p.observacao || '', criado_em: p.criadoEm, app_entrega: p.appEntrega || null,
       retirado_em: p.retiradoEm || null, retirado_por: p.retiradoPor || null, retirado_assinatura: p.retiradoAssinatura || null,
-      foto_path: p.fotoPath || null
+      foto_path: p.fotoPath || null,
+      origem_bipagem: !!p.origemBipagem, pendente_identificacao: !!p.pendenteIdentificacao
     };
     // resident_id tem FK pra "moradores" e colaborador_id tem FK pra
     // "colaboradores" — nunca podem receber o mesmo id trocado, senão a
@@ -1781,6 +1898,147 @@
     pkgFotoManualDataUrl = null; pkgFormDraft = null;
   }
 
+  /* ---------- bipagem rápida (leitor Bluetooth) ---------- */
+
+  // Beep curtinho pra confirmar a bipada sem o porteiro precisar olhar pra
+  // tela toda hora — gerado na hora com o WebAudio (sem precisar de nenhum
+  // arquivo de áudio, funciona offline).
+  function tocarBip(){
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      var ctx = new Ctx();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+      osc.onended = function(){ ctx.close(); };
+    } catch (e) { /* sem áudio, sem problema — o feedback visual já basta */ }
+  }
+
+  function contaBipadasHoje(){
+    var limite = startOfDay(new Date());
+    return packages.filter(function(p){ return p.origemBipagem && new Date(p.criadoEm) >= limite; }).length;
+  }
+
+  // Registra uma encomenda a partir de uma bipada do leitor Bluetooth: sem
+  // morador/colaborador nenhum ainda (isso fica pra depois, na fila
+  // "Aguardando identificação") e sem nenhuma notificação — não tem pra
+  // quem notificar até alguém identificar o destinatário.
+  async function registrarBipagem(codigoLido){
+    if (bipagemBusy) return;
+    bipagemBusy = true;
+    try {
+      var pkg = {
+        id: genId(), codigo: (codigoLido || '').trim() || genCode(), criadoEm: new Date().toISOString(),
+        remetente: '', observacao: '', appEntrega: null, fotoPath: null,
+        residentId: null, bloco: '', apto: '', nomeAvulso: '', telefoneAvulso: '',
+        origemBipagem: true, pendenteIdentificacao: true
+      };
+      var r = await malote.from('encomendas').insert(rowFromEncomenda(pkg));
+      if (r.error) throw r.error;
+      if (!packages.some(function(x){ return x.id === pkg.id; })) packages.push(pkg);
+      bipagemUltimas.unshift({ codigo: pkg.codigo, hora: fmtWhen(pkg.criadoEm) });
+      if (bipagemUltimas.length > 8) bipagemUltimas.length = 8;
+      tocarBip();
+      render();
+    } catch (e) {
+      showToast('Não consegui registrar essa bipada. ' + malotErroMsg(e));
+    } finally {
+      bipagemBusy = false;
+    }
+  }
+
+  function abrirIdentificacao(id){
+    identificandoId = id;
+    identChosenResidentId = ''; identManualMode = false; identFormDraft = null;
+    render();
+  }
+
+  function cancelarIdentificacao(){
+    identificandoId = null;
+    identChosenResidentId = ''; identManualMode = false; identFormDraft = null;
+    render();
+  }
+
+  // Igual ao capturarPkgFormDraft(), só que pro formulário da fila de
+  // identificação — evita perder o que já foi digitado quando trocar de
+  // morador/colaborador força um render() no meio do preenchimento.
+  function capturarIdentFormDraft(){
+    var elRemetente = document.getElementById('f-ident-remetente');
+    var elObs = document.getElementById('f-ident-obs');
+    var elAppEntrega = document.getElementById('f-ident-app-entrega');
+    var elManBloco = document.getElementById('f-ident-manBloco');
+    var elManApto = document.getElementById('f-ident-manApto');
+    var elManNome = document.getElementById('f-ident-manNome');
+    var elManTelefone = document.getElementById('f-ident-manTelefone');
+    if (!elRemetente && !elObs && !elAppEntrega && !elManApto && !elManNome && !elManTelefone) return;
+    identFormDraft = {
+      remetente: elRemetente ? elRemetente.value : (identFormDraft?identFormDraft.remetente:''),
+      obs: elObs ? elObs.value : (identFormDraft?identFormDraft.obs:''),
+      appEntrega: elAppEntrega ? elAppEntrega.value : (identFormDraft?identFormDraft.appEntrega:''),
+      manBloco: elManBloco ? elManBloco.value : (identFormDraft?identFormDraft.manBloco:''),
+      manApto: elManApto ? elManApto.value : (identFormDraft?identFormDraft.manApto:''),
+      manNome: elManNome ? elManNome.value : (identFormDraft?identFormDraft.manNome:''),
+      manTelefone: elManTelefone ? elManTelefone.value : (identFormDraft?identFormDraft.manTelefone:'')
+    };
+  }
+
+  // Identifica uma encomenda que já existe (bipada antes) — é um UPDATE, não
+  // um insert. Reaproveita os mesmos campos/regras do registro normal
+  // (registerPackage) e, assim que salva, deixa lastRegisteredId apontando
+  // pra ela — a tela de "mensagem pronta / abrir WhatsApp" que já existe
+  // hoje aparece sozinha, sem precisar de nenhuma tela nova.
+  async function confirmarIdentificacaoBipado(id){
+    if (identBusy) return;
+    var remetente = (document.getElementById('f-ident-remetente')||{}).value || '';
+    var observacao = (document.getElementById('f-ident-obs')||{}).value || '';
+    var appEntrega = (document.getElementById('f-ident-app-entrega')||{}).value || '';
+    var upd = { remetente: remetente.trim(), observacao: observacao.trim(), app_entrega: appEntrega.trim() || null, pendente_identificacao: false };
+    var residentIdEscolhido = null;
+    if (identChosenResidentId){
+      residentIdEscolhido = identChosenResidentId;
+      upd.bloco = ''; upd.apto = ''; upd.nome_avulso = ''; upd.telefone_avulso = '';
+    } else {
+      var b = (document.getElementById('f-ident-manBloco')||{}).value || '';
+      var a = (document.getElementById('f-ident-manApto')||{}).value || '';
+      var n = (document.getElementById('f-ident-manNome')||{}).value || '';
+      var t = (document.getElementById('f-ident-manTelefone')||{}).value || '';
+      if (!a || !n || !t){ showToast('Preencha apto, nome e WhatsApp.'); return; }
+      upd.bloco = b.trim(); upd.apto = a.trim(); upd.nome_avulso = n.trim(); upd.telefone_avulso = digits(t);
+    }
+    if (modoEmpresarial()) upd.colaborador_id = residentIdEscolhido; else upd.resident_id = residentIdEscolhido;
+
+    identBusy = true; render();
+    try {
+      var r = await malote.from('encomendas').update(upd).eq('id', id);
+      if (r.error) throw r.error;
+      for (var i=0;i<packages.length;i++){
+        if (packages[i].id !== id) continue;
+        var p = packages[i];
+        p.residentId = residentIdEscolhido; p.bloco = upd.bloco || ''; p.apto = upd.apto || '';
+        p.nomeAvulso = upd.nome_avulso || ''; p.telefoneAvulso = upd.telefone_avulso || '';
+        p.remetente = upd.remetente; p.observacao = upd.observacao; p.appEntrega = upd.app_entrega;
+        p.pendenteIdentificacao = false;
+        break;
+      }
+      lastRegisteredId = id;
+      if (residentIdEscolhido){
+        malote.functions.invoke('push-notificar-novo', { body: { encomenda_id: id } }).catch(function(){});
+      }
+      identificandoId = null; identChosenResidentId = ''; identManualMode = false; identFormDraft = null;
+    } catch (e) {
+      showToast('Não consegui salvar a identificação. ' + malotErroMsg(e));
+    } finally {
+      identBusy = false; render();
+    }
+  }
+
   /* ---------- events ---------- */
   document.addEventListener('click', async function(e){
     var btn = e.target.closest('[data-action]');
@@ -1808,6 +2066,13 @@
     if (action === 'use-manual'){ capturarPkgFormDraft(); manualMode = true; chosenResidentId = ''; render(); return; }
     if (action === 'manual-entry'){ resetScan(); manualMode = true; render(); return; }
     if (action === 'notify-confirm'){ return; }
+
+    if (action === 'abrir-bipagem'){ resetScan(); modoBipagem = true; bipagemUltimas = []; render(); return; }
+    if (action === 'concluir-bipagem'){ modoBipagem = false; render(); return; }
+    if (action === 'identificar-bipado'){ abrirIdentificacao(btn.getAttribute('data-id')); return; }
+    if (action === 'cancelar-identificacao'){ cancelarIdentificacao(); return; }
+    if (action === 'confirmar-identificacao'){ if (identBusy) return; confirmarIdentificacaoBipado(btn.getAttribute('data-id')); return; }
+    if (action === 'ident-chip-remetente'){ var inpIdent = document.getElementById('f-ident-remetente'); if (inpIdent) inpIdent.value = btn.getAttribute('data-val'); return; }
 
     if (action === 'compartilhar-foto'){
       var pkgShare = packages.filter(function(x){ return x.id === btn.getAttribute('data-id'); })[0];
@@ -2192,6 +2457,13 @@
       else { chosenResidentId = val; manualMode = false; }
       render();
     }
+    if (e.target.matches('[data-action="ident-resident-select"]')){
+      capturarIdentFormDraft();
+      var valIdent = e.target.value;
+      if (valIdent === '__manual__'){ identChosenResidentId = ''; identManualMode = true; }
+      else { identChosenResidentId = valIdent; identManualMode = false; }
+      render();
+    }
     if (e.target.matches('[data-action="colab-unidade-select"]')){
       capturarColabPorteiroDraft();
       colabPorteiroDraft.unidadeId = e.target.value;
@@ -2318,6 +2590,19 @@
       if (importPreview && importPreview[idxImp]) importPreview[idxImp][campoImp] = e.target.value;
       // não chama render() aqui de propósito — preservaria o foco do campo perdido a cada tecla.
     }
+  });
+
+  // Leitor Bluetooth em modo teclado (HID): digita o código no campo e manda
+  // um Enter sozinho, sem intervenção nenhuma do porteiro. Basta escutar
+  // esse Enter — não tem "botão de bipar" no leitor físico.
+  document.addEventListener('keydown', function(e){
+    if (!e.target || e.target.id !== 'f-bipagem') return;
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var codigo = e.target.value;
+    e.target.value = '';
+    if (!codigo.trim()) return;
+    registrarBipagem(codigo);
   });
 
   document.addEventListener('pointerdown', function(e){

@@ -21,8 +21,10 @@
       <a href="#" data-aba="setores" data-admin-only="1" style="display:none;">Setores</a>
       <a href="#" data-aba="colaboradores">Colaboradores</a>
       <a href="#" data-aba="portaria" data-admin-only="1" style="display:none;">Portaria</a>
+      <a href="#" data-aba="ocorrencias" data-admin-only="1" style="display:none;">Ocorrências</a>
       <a href="#" data-aba="encomendas">Encomendas</a>
       <a href="#" data-aba="dashboard">Dashboard</a>
+      <a href="#" data-aba="assistente">Assistente</a>
       <a href="contratar-plano.html" id="nav-plano" data-admin-only="1" style="display:none;">Plano</a>
       <button type="button" class="btn btn-outline btn-sm" onclick="malotVoltar('../index.html')">Leitor de Etiqueta</button>
       <button type="button" class="btn btn-outline btn-sm" onclick="malotSair()">Sair</button>
@@ -252,6 +254,37 @@
         </div>
       </div>
 
+      <!-- OCORRÊNCIAS -->
+      <div id="aba-ocorrencias" style="display:none;">
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Livro de ocorrências</h2>
+          <p class="hint">Escreva um aviso e mande de uma vez só pra todos os colaboradores, direto pelo Malote (notificação push) — sem precisar do seu WhatsApp pessoal. Só chega pra quem já instalou o app e aceitou notificações.</p>
+          <div class="field full"><label>Mensagem</label><textarea id="f-ocorrencia-mensagem" maxlength="500" placeholder="Ex: Hoje das 14h às 18h teremos manutenção programada no prédio."></textarea></div>
+          <div class="actions"><button type="button" class="btn btn-primary" id="btn-preparar-ocorrencia">Enviar aviso</button></div>
+
+          <div id="ocorrencia-confirm" class="card" style="display:none;margin-top:14px;background:var(--paper-2);">
+            <h3 style="margin-bottom:4px;">Confirmar envio</h3>
+            <p class="hint">Isso vai notificar todos os colaboradores cadastrados agora. Confira o texto:</p>
+            <p id="ocorrencia-confirm-texto" style="white-space:pre-wrap;"></p>
+            <div class="actions">
+              <button type="button" class="btn btn-primary" id="btn-confirmar-ocorrencia">Confirmar e enviar</button>
+              <button type="button" class="btn btn-outline" id="btn-cancelar-ocorrencia">Cancelar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Avisos já enviados</h2>
+          <div class="table-wrap" id="ocorrencias-tabela-wrap" style="display:none;">
+            <table>
+              <thead><tr><th>Mensagem</th><th>Enviado em</th><th>Notificados</th></tr></thead>
+              <tbody id="ocorrencias-tbody"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="ocorrencias-vazio" style="display:none;">Nenhum aviso enviado ainda.</div>
+        </div>
+      </div>
+
       <!-- ENCOMENDAS -->
       <div id="aba-encomendas" style="display:none;">
         <div class="card">
@@ -306,6 +339,28 @@
         </div>
       </div>
 
+      <div id="aba-assistente" style="display:none;">
+        <div class="card">
+          <h2 style="margin-bottom:4px;">Assistente</h2>
+          <p class="hint">Pergunte sobre as encomendas da sua empresa, em português normal. O assistente responde um conjunto fixo de perguntas seguras — ele nunca acessa nem altera nada além disso.</p>
+
+          <div class="chat-chips">
+            <button type="button" class="chat-chip" data-pergunta="Quantas encomendas chegaram essa semana?">Quantas chegaram essa semana?</button>
+            <button type="button" class="chat-chip" data-pergunta="Quantas encomendas estão esperando retirada?">Quantas estão esperando retirada?</button>
+            <button type="button" class="chat-chip" data-pergunta="Qual o horário de pico?">Qual o horário de pico?</button>
+            <button type="button" class="chat-chip" data-pergunta="Está tudo em dia com o pagamento?">Está tudo em dia com o pagamento?</button>
+            <button type="button" class="chat-chip" data-pergunta="Me dá um relatório de hoje">Relatório de hoje</button>
+          </div>
+
+          <div class="chat-log" id="chat-log"></div>
+
+          <div class="chat-input-row">
+            <input type="text" id="f-chat-pergunta" maxlength="300" placeholder="Digite sua pergunta...">
+            <button type="button" class="btn btn-primary" id="btn-chat-enviar">Perguntar</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -326,7 +381,7 @@
     var sessaoAtual = null;
     var empresaAtual = null;
     var souAdministrador = false;
-    var estado = { unidades: [], setores: [], colaboradores: [], encomendas: [], porteiros: [] };
+    var estado = { unidades: [], setores: [], colaboradores: [], encomendas: [], porteiros: [], ocorrencias: [] };
     var empresaFotoPath = null;
 
     function aplicarPermissoes(){
@@ -407,11 +462,80 @@
         e.preventDefault();
         document.querySelectorAll('.nav a[data-aba]').forEach(function(x){ x.classList.remove('active'); });
         this.classList.add('active');
-        ['visao','unidades','setores','colaboradores','portaria','encomendas','dashboard'].forEach(function(id){
+        ['visao','unidades','setores','colaboradores','portaria','ocorrencias','encomendas','dashboard','assistente'].forEach(function(id){
           document.getElementById('aba-'+id).style.display = (id === a.getAttribute('data-aba')) ? 'block' : 'none';
         });
       });
     });
+
+    /* ---------- assistente de IA (Item 8 do backlog, versão empresa) ---------- */
+    var chatHistorico = [];
+
+    function renderChatLog(){
+      var log = document.getElementById('chat-log');
+      if (!log) return;
+      if (!chatHistorico.length){
+        log.innerHTML = '<div class="chat-empty">Pergunte algo pra começar — pode usar um dos botões acima.</div>';
+        return;
+      }
+      log.innerHTML = chatHistorico.map(function(m){
+        var classe = 'chat-msg ' + (m.autor === 'eu' ? 'chat-msg-eu' : (m.autor === 'erro' ? 'chat-msg-erro' : 'chat-msg-ia'));
+        return '<div class="' + classe + '">' + esc(m.texto) + '</div>';
+      }).join('');
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function enviarPerguntaChat(){
+      var campo = document.getElementById('f-chat-pergunta');
+      var pergunta = (campo.value || '').trim();
+      if (!pergunta) return;
+      chatHistorico.push({ autor: 'eu', texto: pergunta });
+      campo.value = '';
+      renderChatLog();
+      var btn = document.getElementById('btn-chat-enviar');
+      btn.disabled = true;
+      campo.disabled = true;
+      try {
+        var resp = await malote.functions.invoke('assistente-empresa', { body: { pergunta: pergunta } });
+        if (resp.error){
+          var msg = 'Não consegui responder agora.';
+          try {
+            if (resp.error.context && typeof resp.error.context.json === 'function'){
+              var corpo = await resp.error.context.json();
+              if (corpo && corpo.error) msg = corpo.error;
+            }
+          } catch (e2) { /* usa a mensagem padrão */ }
+          chatHistorico.push({ autor: 'erro', texto: msg });
+        } else {
+          var dados = resp.data || {};
+          chatHistorico.push({ autor: 'ia', texto: dados.resposta || 'Não consegui entender a resposta.' });
+        }
+      } catch (err) {
+        chatHistorico.push({ autor: 'erro', texto: malotErroMsg(err) });
+      } finally {
+        btn.disabled = false;
+        campo.disabled = false;
+        renderChatLog();
+        campo.focus();
+      }
+    }
+
+    document.querySelectorAll('.chat-chip').forEach(function(chip){
+      chip.addEventListener('click', function(){
+        var campo = document.getElementById('f-chat-pergunta');
+        campo.value = this.getAttribute('data-pergunta');
+        campo.focus();
+      });
+    });
+    var btnChatEnviar = document.getElementById('btn-chat-enviar');
+    if (btnChatEnviar) btnChatEnviar.addEventListener('click', enviarPerguntaChat);
+    var fChatPergunta = document.getElementById('f-chat-pergunta');
+    if (fChatPergunta){
+      fChatPergunta.addEventListener('keydown', function(e){
+        if (e.key === 'Enter'){ e.preventDefault(); enviarPerguntaChat(); }
+      });
+    }
+    renderChatLog();
 
     async function finalizarCadastroPendente(){
       var nome = null;
@@ -522,7 +646,7 @@
         // (bloqueado-pagar) pro administrador.
         document.querySelectorAll('.nav a[data-aba]').forEach(function(a){ a.style.display = 'none'; });
         document.getElementById('nav-plano').style.display = 'none';
-        ['visao','unidades','setores','colaboradores','portaria','encomendas','dashboard'].forEach(function(id){
+        ['visao','unidades','setores','colaboradores','portaria','ocorrencias','encomendas','dashboard','assistente'].forEach(function(id){
           document.getElementById('aba-'+id).style.display = 'none';
         });
         if (souAdministrador){
@@ -545,7 +669,7 @@
       // saiu do estado bloqueado (ex: pagamento aprovado enquanto a pessoa
       // ainda estava na tela) — repõe a aba padrão, já que enquanto bloqueada
       // todas ficaram com display:none.
-      ['visao','unidades','setores','colaboradores','portaria','encomendas','dashboard'].forEach(function(id){
+      ['visao','unidades','setores','colaboradores','portaria','ocorrencias','encomendas','dashboard','assistente'].forEach(function(id){
         document.getElementById('aba-'+id).style.display = (id === 'visao') ? 'block' : 'none';
       });
       document.querySelectorAll('.nav a[data-aba]').forEach(function(a){ a.classList.toggle('active', a.getAttribute('data-aba') === 'visao'); });
@@ -554,17 +678,19 @@
     }
 
     async function carregarDados(){
-      var [ru, rs, rc, re, rp] = await Promise.all([
+      var [ru, rs, rc, re, rp, ro] = await Promise.all([
         malote.from('unidades').select('*').eq('condominio_id', empresaAtual.id).order('nome'),
         malote.from('setores').select('*').eq('condominio_id', empresaAtual.id).order('nome'),
         malote.from('colaboradores').select('*').eq('condominio_id', empresaAtual.id).order('nome'),
         malote.from('encomendas').select('*').eq('condominio_id', empresaAtual.id).order('criado_em', { ascending: false }).limit(50),
-        malote.from('porteiros').select('*').eq('condominio_id', empresaAtual.id).order('nome')
+        malote.from('porteiros').select('*').eq('condominio_id', empresaAtual.id).order('nome'),
+        malote.from('ocorrencias').select('mensagem, criado_em, destinatarios_total, enviados_total').eq('condominio_id', empresaAtual.id).order('criado_em', { ascending: false }).limit(50)
       ]);
       estado.unidades = ru.data || [];
       estado.setores = rs.data || [];
       estado.colaboradores = rc.data || [];
       estado.encomendas = re.data || [];
+      estado.ocorrencias = ro.data || [];
       estado.porteiros = rp.data || [];
       renderTudo();
       carregarDashboardEmpresa();
@@ -917,6 +1043,72 @@
           '<td>' + (e.retirado_em ? '<span class="badge badge-ok">retirada</span>' : '<span class="badge badge-warn">aguardando</span>') + '</td></tr>';
       });
       document.getElementById('encomendas-vazio').style.display = estado.encomendas.length ? 'none' : 'block';
+
+      // ocorrências
+      var wrapOc = document.getElementById('ocorrencias-tabela-wrap');
+      var vazioOc = document.getElementById('ocorrencias-vazio');
+      if (!estado.ocorrencias.length){
+        wrapOc.style.display = 'none';
+        vazioOc.style.display = 'block';
+      } else {
+        vazioOc.style.display = 'none';
+        wrapOc.style.display = 'block';
+        document.getElementById('ocorrencias-tbody').innerHTML = estado.ocorrencias.map(function(o){
+          return '<tr><td>' + esc(o.mensagem) + '</td>' +
+            '<td>' + malotFormatarData(o.criado_em) + '</td>' +
+            '<td>' + o.enviados_total + ' de ' + o.destinatarios_total + '</td></tr>';
+        }).join('');
+      }
+    }
+
+    var btnPrepararOcorrencia = document.getElementById('btn-preparar-ocorrencia');
+    if (btnPrepararOcorrencia){
+      btnPrepararOcorrencia.addEventListener('click', function(){
+        var mensagem = (document.getElementById('f-ocorrencia-mensagem').value || '').trim();
+        if (!mensagem){ malotToast('Escreva o aviso antes de enviar.', 'erro'); return; }
+        document.getElementById('ocorrencia-confirm-texto').textContent = mensagem;
+        document.getElementById('ocorrencia-confirm').style.display = 'block';
+      });
+    }
+
+    var btnCancelarOcorrencia = document.getElementById('btn-cancelar-ocorrencia');
+    if (btnCancelarOcorrencia){
+      btnCancelarOcorrencia.addEventListener('click', function(){
+        document.getElementById('ocorrencia-confirm').style.display = 'none';
+      });
+    }
+
+    var btnConfirmarOcorrencia = document.getElementById('btn-confirmar-ocorrencia');
+    if (btnConfirmarOcorrencia){
+      btnConfirmarOcorrencia.addEventListener('click', async function(){
+        var mensagem = (document.getElementById('f-ocorrencia-mensagem').value || '').trim();
+        if (!mensagem) return;
+        var btn = this;
+        btn.disabled = true;
+        try {
+          var resp = await malote.functions.invoke('enviar-ocorrencia', { body: { mensagem: mensagem } });
+          if (resp.error){
+            var msg = 'Não foi possível enviar o aviso.';
+            try {
+              if (resp.error.context && typeof resp.error.context.json === 'function'){
+                var corpo = await resp.error.context.json();
+                if (corpo && corpo.error) msg = corpo.error;
+              }
+            } catch (e2) { /* usa a mensagem padrão */ }
+            malotToast(msg, 'erro');
+            return;
+          }
+          var dados = resp.data || {};
+          malotToast('Aviso enviado! ' + (dados.enviados || 0) + ' de ' + (dados.destinatarios || 0) + ' colaboradores notificados agora.', 'ok');
+          document.getElementById('f-ocorrencia-mensagem').value = '';
+          document.getElementById('ocorrencia-confirm').style.display = 'none';
+          await carregarDados();
+        } catch (err) {
+          malotToast(malotErroMsg(err), 'erro');
+        } finally {
+          btn.disabled = false;
+        }
+      });
     }
 
     function limparFormularioUnidade(){

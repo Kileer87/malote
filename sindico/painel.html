@@ -122,6 +122,9 @@
         <button type="button" class="dash-nav-btn" data-page="nao-retirado">Quem não retirou</button>
         <button type="button" class="dash-nav-btn" data-page="pagamentos">Pagamentos</button>
         <button type="button" class="dash-nav-btn" data-page="portaria">Portaria</button>
+        <button type="button" class="dash-nav-btn" data-page="ocorrencias">Livro de ocorrências</button>
+        <button type="button" class="dash-nav-btn" data-page="agenda">Calendário</button>
+        <button type="button" class="dash-nav-btn" data-page="assistente">Assistente</button>
         <button type="button" class="dash-nav-btn" data-page="dados">Dados do condomínio</button>
         <div class="dash-sep"></div>
         <a href="../index.html?tab=ler" id="dash-link-ler">Ler etiqueta</a>
@@ -236,6 +239,110 @@
       <div class="empty" id="portaria-vazio" style="display:none;">Nenhum porteiro/recepção cadastrado ainda.</div>
     </div>
 
+        </div>
+
+        <div id="dash-page-ocorrencias" class="dash-page" style="display:none;">
+    <div class="card">
+      <h2 style="margin-bottom:4px;">Livro de ocorrências</h2>
+      <p class="hint">Escreva um aviso e mande de uma vez só pra todos os moradores, direto pelo Malote (notificação push) — sem precisar do seu WhatsApp pessoal. Só chega pra quem já instalou o app e aceitou notificações.</p>
+      <div class="field full"><label>Mensagem</label><textarea id="f-ocorrencia-mensagem" maxlength="500" placeholder="Ex: Hoje das 14h às 18h teremos falta de água programada pela concessionária."></textarea></div>
+      <div class="actions"><button type="button" class="btn btn-primary" id="btn-preparar-ocorrencia">Enviar aviso</button></div>
+
+      <div id="ocorrencia-confirm" class="card" style="display:none;margin-top:14px;background:var(--paper-2);">
+        <h3 style="margin-bottom:4px;">Confirmar envio</h3>
+        <p class="hint">Isso vai notificar todos os moradores cadastrados agora. Confira o texto:</p>
+        <p id="ocorrencia-confirm-texto" style="white-space:pre-wrap;"></p>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-confirmar-ocorrencia">Confirmar e enviar</button>
+          <button type="button" class="btn btn-outline" id="btn-cancelar-ocorrencia">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Avisos já enviados</h2>
+      <div class="table-wrap" id="ocorrencias-tabela-wrap" style="display:none;">
+        <table>
+          <thead><tr><th>Mensagem</th><th>Enviado em</th><th>Notificados</th></tr></thead>
+          <tbody id="ocorrencias-tbody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="ocorrencias-vazio" style="display:none;">Nenhum aviso enviado ainda.</div>
+    </div>
+
+        </div>
+
+        <div id="dash-page-agenda" class="dash-page" style="display:none;">
+    <div class="card">
+      <div class="cal-header">
+        <h2 style="margin:0;">Calendário</h2>
+        <div class="cal-nav">
+          <button type="button" class="btn btn-outline btn-sm" id="btn-agenda-mes-anterior">‹</button>
+          <span id="agenda-mes-label" class="cal-mes-label">—</span>
+          <button type="button" class="btn btn-outline btn-sm" id="btn-agenda-mes-seguinte">›</button>
+        </div>
+      </div>
+      <div class="cal-dias-semana">
+        <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
+      </div>
+      <div class="cal-grid" id="agenda-grid"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:4px;">Novo evento</h2>
+      <p class="hint">Reunião, tarefa, lembrete — o que precisar. Fica só aqui no seu painel, o morador não vê nada disso.</p>
+      <div class="form-grid">
+        <div class="field"><label>Título</label><input type="text" id="f-agenda-titulo" placeholder="Ex: Reunião com o conselho"></div>
+        <div class="field">
+          <label>Tipo</label>
+          <select id="f-agenda-tipo">
+            <option value="reuniao">Reunião</option>
+            <option value="tarefa">Tarefa</option>
+            <option value="lembrete">Lembrete</option>
+            <option value="outro" selected>Outro</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Data</label><input type="date" id="f-agenda-data"></div>
+        <div class="field"><label>Hora (opcional)</label><input type="time" id="f-agenda-hora"></div>
+      </div>
+      <div class="actions"><button type="button" class="btn btn-primary" id="btn-add-agenda">Adicionar</button></div>
+    </div>
+
+    <div class="card">
+      <h2 id="agenda-lista-titulo" style="margin-bottom:4px;">Próximos eventos</h2>
+      <p class="hint" id="agenda-filtro-ativo" style="display:none;">Mostrando só o dia selecionado. <a href="#" id="agenda-limpar-filtro">Ver todos</a></p>
+      <div class="table-wrap" id="agenda-tabela-wrap" style="display:none;">
+        <table>
+          <thead><tr><th>Data</th><th>Hora</th><th>Título</th><th>Tipo</th><th></th></tr></thead>
+          <tbody id="agenda-tbody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="agenda-vazio" style="display:none;">Nenhum evento cadastrado ainda.</div>
+    </div>
+        </div>
+
+        <div id="dash-page-assistente" class="dash-page" style="display:none;">
+    <div class="card">
+      <h2 style="margin-bottom:4px;">Assistente</h2>
+      <p class="hint">Pergunte sobre as encomendas do seu condomínio, em português normal. O assistente responde um conjunto fixo de perguntas seguras — ele nunca acessa nem altera nada além disso.</p>
+
+      <div class="chat-chips">
+        <button type="button" class="chat-chip" data-pergunta="Quantas encomendas chegaram essa semana?">Quantas chegaram essa semana?</button>
+        <button type="button" class="chat-chip" data-pergunta="Quantas encomendas estão esperando retirada?">Quantas estão esperando retirada?</button>
+        <button type="button" class="chat-chip" data-pergunta="Qual o horário de pico?">Qual o horário de pico?</button>
+        <button type="button" class="chat-chip" data-pergunta="Está tudo em dia com o pagamento?">Está tudo em dia com o pagamento?</button>
+        <button type="button" class="chat-chip" data-pergunta="Me dá um relatório de hoje">Relatório de hoje</button>
+      </div>
+
+      <div class="chat-log" id="chat-log"></div>
+
+      <div class="chat-input-row">
+        <input type="text" id="f-chat-pergunta" placeholder="Ex: quem ainda não retirou a encomenda?" maxlength="300">
+        <button type="button" class="btn btn-primary" id="btn-chat-enviar">Perguntar</button>
+      </div>
+    </div>
         </div>
 
         <div id="dash-page-dados" class="dash-page" style="display:none;">
@@ -537,7 +644,7 @@
         window.__paginaSindicoRestaurada = true;
         var paginaSalva = null;
         try { paginaSalva = localStorage.getItem('malote_sindico_pagina_ativa'); } catch(e){}
-        var paginasValidas = ['dashboard', 'historico', 'nao-retirado', 'pagamentos', 'portaria', 'dados'];
+        var paginasValidas = ['dashboard', 'historico', 'nao-retirado', 'pagamentos', 'portaria', 'ocorrencias', 'agenda', 'assistente', 'dados'];
         if (paginaSalva && paginasValidas.indexOf(paginaSalva) !== -1) mostrarPaginaDash(paginaSalva);
       }
     }
@@ -559,6 +666,14 @@
       if (pagina === 'portaria' && !window.__portariaCarregada){
         window.__portariaCarregada = true;
         carregarPorteiros();
+      }
+      if (pagina === 'ocorrencias' && !window.__ocorrenciasCarregadas){
+        window.__ocorrenciasCarregadas = true;
+        carregarOcorrencias();
+      }
+      if (pagina === 'agenda' && !window.__agendaCarregada){
+        window.__agendaCarregada = true;
+        carregarAgenda();
       }
     }
     document.querySelectorAll('.dash-nav-btn').forEach(function(btn){
@@ -609,6 +724,330 @@
         carregarHistoricoEntregas(parseInt(this.getAttribute('data-periodo'), 10));
       });
     });
+
+    async function carregarOcorrencias(){
+      if (!meuCondominioId) return;
+      var wrap = document.getElementById('ocorrencias-tabela-wrap');
+      var vazio = document.getElementById('ocorrencias-vazio');
+      var r = await malote.from('ocorrencias')
+        .select('mensagem, criado_em, destinatarios_total, enviados_total')
+        .eq('condominio_id', meuCondominioId)
+        .order('criado_em', { ascending: false })
+        .limit(50);
+      if (r.error || !r.data || !r.data.length){
+        wrap.style.display = 'none';
+        vazio.style.display = 'block';
+        return;
+      }
+
+      vazio.style.display = 'none';
+      wrap.style.display = 'block';
+      document.getElementById('ocorrencias-tbody').innerHTML = r.data.map(function(o){
+        return '<tr><td>' + esc(o.mensagem) + '</td>' +
+          '<td>' + malotFormatarData(o.criado_em) + '</td>' +
+          '<td>' + o.enviados_total + ' de ' + o.destinatarios_total + '</td></tr>';
+      }).join('');
+    }
+
+    var btnPrepararOcorrencia = document.getElementById('btn-preparar-ocorrencia');
+    if (btnPrepararOcorrencia){
+      btnPrepararOcorrencia.addEventListener('click', function(){
+        var mensagem = (document.getElementById('f-ocorrencia-mensagem').value || '').trim();
+        if (!mensagem){ malotToast('Escreva o aviso antes de enviar.', 'erro'); return; }
+        document.getElementById('ocorrencia-confirm-texto').textContent = mensagem;
+        document.getElementById('ocorrencia-confirm').style.display = 'block';
+      });
+    }
+
+    var btnCancelarOcorrencia = document.getElementById('btn-cancelar-ocorrencia');
+    if (btnCancelarOcorrencia){
+      btnCancelarOcorrencia.addEventListener('click', function(){
+        document.getElementById('ocorrencia-confirm').style.display = 'none';
+      });
+    }
+
+    var btnConfirmarOcorrencia = document.getElementById('btn-confirmar-ocorrencia');
+    if (btnConfirmarOcorrencia){
+      btnConfirmarOcorrencia.addEventListener('click', async function(){
+        var mensagem = (document.getElementById('f-ocorrencia-mensagem').value || '').trim();
+        if (!mensagem) return;
+        var btn = this;
+        btn.disabled = true;
+        try {
+          var resp = await malote.functions.invoke('enviar-ocorrencia', { body: { mensagem: mensagem } });
+          if (resp.error){
+            var msg = 'Não foi possível enviar o aviso.';
+            try {
+              if (resp.error.context && typeof resp.error.context.json === 'function'){
+                var corpo = await resp.error.context.json();
+                if (corpo && corpo.error) msg = corpo.error;
+              }
+            } catch (e2) { /* usa a mensagem padrão */ }
+            malotToast(msg, 'erro');
+            return;
+          }
+          var dados = resp.data || {};
+          malotToast('Aviso enviado! ' + (dados.enviados || 0) + ' de ' + (dados.destinatarios || 0) + ' moradores notificados agora.', 'ok');
+          document.getElementById('f-ocorrencia-mensagem').value = '';
+          document.getElementById('ocorrencia-confirm').style.display = 'none';
+          await carregarOcorrencias();
+        } catch (err) {
+          malotToast(malotErroMsg(err), 'erro');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+
+    /* ---------- calendário do síndico (Item 4 do backlog): agenda pessoal
+       dele, sem ligação nenhuma com moradores nem com reserva de área comum
+       (isso ainda não existe) ---------- */
+    var agendaEventos = [];
+    var agendaMesExibido = new Date(); agendaMesExibido.setDate(1);
+    var agendaDiaSelecionado = null;
+    var TIPO_AGENDA_LABEL = { reuniao: 'Reunião', tarefa: 'Tarefa', lembrete: 'Lembrete', outro: 'Outro' };
+
+    async function carregarAgenda(){
+      if (!meuCondominioId) return;
+      var r = await malote.from('eventos_agenda').select('*').eq('condominio_id', meuCondominioId).order('data').order('hora');
+      if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+      agendaEventos = r.data || [];
+      renderCalendarioAgenda();
+      renderListaAgenda();
+    }
+
+    function agendaEventosDoDia(dataStr){
+      return agendaEventos.filter(function(e){ return e.data === dataStr; });
+    }
+
+    function agendaDataParaChave(ano, mes, dia){
+      return ano + '-' + String(mes + 1).padStart(2, '0') + '-' + String(dia).padStart(2, '0');
+    }
+
+    function renderCalendarioAgenda(){
+      var ano = agendaMesExibido.getFullYear();
+      var mes = agendaMesExibido.getMonth();
+      var MESES_AGENDA = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+      document.getElementById('agenda-mes-label').textContent = MESES_AGENDA[mes] + ' de ' + ano;
+
+      var primeiroDiaSemana = new Date(ano, mes, 1).getDay();
+      var totalDiasMes = new Date(ano, mes + 1, 0).getDate();
+      var totalDiasMesAnterior = new Date(ano, mes, 0).getDate();
+      var hoje = new Date();
+      var hojeChave = agendaDataParaChave(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+
+      var celulas = [];
+      for (var i = primeiroDiaSemana - 1; i >= 0; i--){
+        celulas.push({ dia: totalDiasMesAnterior - i, foraDoMes: true, chave: null });
+      }
+      for (var d = 1; d <= totalDiasMes; d++){
+        celulas.push({ dia: d, foraDoMes: false, chave: agendaDataParaChave(ano, mes, d) });
+      }
+      var proximoDiaSeguinte = 1;
+      while (celulas.length % 7 !== 0){
+        celulas.push({ dia: proximoDiaSeguinte, foraDoMes: true, chave: null });
+        proximoDiaSeguinte++;
+      }
+
+      document.getElementById('agenda-grid').innerHTML = celulas.map(function(c){
+        var classes = ['cal-cell'];
+        if (c.foraDoMes) classes.push('cal-cell-outmes');
+        if (c.chave && c.chave === hojeChave) classes.push('cal-cell-hoje');
+        if (c.chave && c.chave === agendaDiaSelecionado) classes.push('cal-cell-selecionado');
+        var temEvento = c.chave ? agendaEventosDoDia(c.chave).length > 0 : false;
+        var attrDia = c.chave ? ' data-dia="' + c.chave + '"' : '';
+        return '<div class="' + classes.join(' ') + '"' + attrDia + '>' + c.dia + (temEvento ? '<span class="cal-dot"></span>' : '') + '</div>';
+      }).join('');
+
+      document.querySelectorAll('#agenda-grid [data-dia]').forEach(function(cel){
+        cel.addEventListener('click', function(){
+          var dia = this.getAttribute('data-dia');
+          agendaDiaSelecionado = (agendaDiaSelecionado === dia) ? null : dia;
+          document.getElementById('f-agenda-data').value = agendaDiaSelecionado || '';
+          renderCalendarioAgenda();
+          renderListaAgenda();
+        });
+      });
+    }
+
+    function renderListaAgenda(){
+      var titulo = document.getElementById('agenda-lista-titulo');
+      var filtroAviso = document.getElementById('agenda-filtro-ativo');
+      var wrap = document.getElementById('agenda-tabela-wrap');
+      var vazio = document.getElementById('agenda-vazio');
+
+      var lista;
+      if (agendaDiaSelecionado){
+        titulo.textContent = 'Eventos em ' + malotFormatarDataSimples(agendaDiaSelecionado);
+        filtroAviso.style.display = 'block';
+        lista = agendaEventosDoDia(agendaDiaSelecionado);
+      } else {
+        titulo.textContent = 'Próximos eventos';
+        filtroAviso.style.display = 'none';
+        var hojeStr = agendaDataParaChave(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+        lista = agendaEventos.filter(function(e){ return e.data >= hojeStr; });
+      }
+
+      if (!lista.length){
+        wrap.style.display = 'none';
+        vazio.style.display = 'block';
+        return;
+      }
+      vazio.style.display = 'none';
+      wrap.style.display = 'block';
+      document.getElementById('agenda-tbody').innerHTML = lista.map(function(e){
+        var tipoLabel = TIPO_AGENDA_LABEL[e.tipo] || 'Outro';
+        var tituloTxt = esc(e.titulo) + (e.concluido ? ' <span class="badge badge-muted">concluído</span>' : '');
+        return '<tr><td>' + malotFormatarDataSimples(e.data) + '</td>' +
+          '<td>' + (e.hora ? String(e.hora).slice(0, 5) : '—') + '</td>' +
+          '<td>' + tituloTxt + '</td>' +
+          '<td>' + tipoLabel + '</td>' +
+          '<td><button type="button" class="btn btn-outline btn-sm" data-agenda-concluir="' + e.id + '" data-atual="' + (e.concluido ? '1' : '0') + '">' + (e.concluido ? 'Reabrir' : 'Concluir') + '</button> ' +
+          '<button type="button" class="btn btn-outline btn-sm" data-agenda-excluir="' + e.id + '">Excluir</button></td></tr>';
+      }).join('');
+
+      document.querySelectorAll('[data-agenda-concluir]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var novoValor = this.getAttribute('data-atual') !== '1';
+          var r = await malote.from('eventos_agenda').update({ concluido: novoValor }).eq('id', this.getAttribute('data-agenda-concluir'));
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          await carregarAgenda();
+        });
+      });
+      document.querySelectorAll('[data-agenda-excluir]').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var r = await malote.from('eventos_agenda').delete().eq('id', this.getAttribute('data-agenda-excluir'));
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          malotToast('Evento excluído.', 'ok');
+          await carregarAgenda();
+        });
+      });
+    }
+
+    var btnAgendaMesAnterior = document.getElementById('btn-agenda-mes-anterior');
+    if (btnAgendaMesAnterior){
+      btnAgendaMesAnterior.addEventListener('click', function(){
+        agendaMesExibido.setMonth(agendaMesExibido.getMonth() - 1);
+        renderCalendarioAgenda();
+      });
+    }
+    var btnAgendaMesSeguinte = document.getElementById('btn-agenda-mes-seguinte');
+    if (btnAgendaMesSeguinte){
+      btnAgendaMesSeguinte.addEventListener('click', function(){
+        agendaMesExibido.setMonth(agendaMesExibido.getMonth() + 1);
+        renderCalendarioAgenda();
+      });
+    }
+    var agendaLimparFiltro = document.getElementById('agenda-limpar-filtro');
+    if (agendaLimparFiltro){
+      agendaLimparFiltro.addEventListener('click', function(e){
+        e.preventDefault();
+        agendaDiaSelecionado = null;
+        renderCalendarioAgenda();
+        renderListaAgenda();
+      });
+    }
+
+    var btnAddAgenda = document.getElementById('btn-add-agenda');
+    if (btnAddAgenda){
+      btnAddAgenda.addEventListener('click', async function(){
+        var titulo = (document.getElementById('f-agenda-titulo').value || '').trim();
+        var tipo = document.getElementById('f-agenda-tipo').value;
+        var data = document.getElementById('f-agenda-data').value;
+        var hora = document.getElementById('f-agenda-hora').value || null;
+        if (!titulo){ malotToast('Escreva um título pro evento.', 'erro'); return; }
+        if (!data){ malotToast('Escolha uma data.', 'erro'); return; }
+        var btn = this;
+        btn.disabled = true;
+        try {
+          var r = await malote.from('eventos_agenda').insert({
+            condominio_id: meuCondominioId, titulo: titulo, tipo: tipo, data: data, hora: hora,
+            criado_por: sessaoAtual.user.id
+          });
+          if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
+          malotToast('Evento adicionado.', 'ok');
+          document.getElementById('f-agenda-titulo').value = '';
+          document.getElementById('f-agenda-hora').value = '';
+          await carregarAgenda();
+        } catch (err) {
+          malotToast(malotErroMsg(err), 'erro');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+
+    /* ---------- assistente de IA (Item 8 do backlog): chat com um conjunto
+       fixo de perguntas seguras — a resposta vem sempre da edge function
+       assistente-sindico, nunca da IA diretamente ---------- */
+    var chatHistorico = [];
+
+    function renderChatLog(){
+      var log = document.getElementById('chat-log');
+      if (!log) return;
+      if (!chatHistorico.length){
+        log.innerHTML = '<div class="chat-empty">Pergunte algo pra começar — pode usar um dos botões acima.</div>';
+        return;
+      }
+      log.innerHTML = chatHistorico.map(function(m){
+        var classe = 'chat-msg ' + (m.autor === 'eu' ? 'chat-msg-eu' : (m.autor === 'erro' ? 'chat-msg-erro' : 'chat-msg-ia'));
+        return '<div class="' + classe + '">' + esc(m.texto) + '</div>';
+      }).join('');
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function enviarPerguntaChat(){
+      var campo = document.getElementById('f-chat-pergunta');
+      var pergunta = (campo.value || '').trim();
+      if (!pergunta) return;
+      chatHistorico.push({ autor: 'eu', texto: pergunta });
+      campo.value = '';
+      renderChatLog();
+
+      var btn = document.getElementById('btn-chat-enviar');
+      btn.disabled = true;
+      campo.disabled = true;
+      try {
+        var resp = await malote.functions.invoke('assistente-sindico', { body: { pergunta: pergunta } });
+        if (resp.error){
+          var msg = 'Não consegui responder agora.';
+          try {
+            if (resp.error.context && typeof resp.error.context.json === 'function'){
+              var corpo = await resp.error.context.json();
+              if (corpo && corpo.error) msg = corpo.error;
+            }
+          } catch (e2) { /* usa a mensagem padrão */ }
+          chatHistorico.push({ autor: 'erro', texto: msg });
+        } else {
+          var dados = resp.data || {};
+          chatHistorico.push({ autor: 'ia', texto: dados.resposta || 'Não consegui entender a resposta.' });
+        }
+      } catch (err) {
+        chatHistorico.push({ autor: 'erro', texto: malotErroMsg(err) });
+      } finally {
+        btn.disabled = false;
+        campo.disabled = false;
+        renderChatLog();
+        campo.focus();
+      }
+    }
+
+    document.querySelectorAll('.chat-chip').forEach(function(chip){
+      chip.addEventListener('click', function(){
+        var campo = document.getElementById('f-chat-pergunta');
+        campo.value = this.getAttribute('data-pergunta');
+        campo.focus();
+      });
+    });
+    var btnChatEnviar = document.getElementById('btn-chat-enviar');
+    if (btnChatEnviar) btnChatEnviar.addEventListener('click', enviarPerguntaChat);
+    var fChatPergunta = document.getElementById('f-chat-pergunta');
+    if (fChatPergunta){
+      fChatPergunta.addEventListener('keydown', function(e){
+        if (e.key === 'Enter'){ e.preventDefault(); enviarPerguntaChat(); }
+      });
+    }
+    renderChatLog();
 
     function atualizarHintValorEditar(){
       var apartamentos = parseInt(document.getElementById('f-editar-apartamentos').value, 10);

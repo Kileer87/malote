@@ -198,3 +198,49 @@ tr:last-child td{ border-bottom:none; }
 .spinner{ width:15px; height:15px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent); animation:spin .8s linear infinite; display:inline-block; }
 @keyframes spin{ to{ transform:rotate(360deg); } }
 .center-loading{ display:flex; align-items:center; justify-content:center; gap:8px; padding:40px 0; color:var(--ink-muted); font-size:13.5px; }
+
+/* calendário do síndico (Item 4 do backlog) — grade de mês simples, sem
+   biblioteca externa: 7 colunas fixas, cada dia um quadrado clicável com uma
+   bolinha quando tem evento marcado. */
+.cal-header{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+.cal-nav{ display:flex; align-items:center; gap:10px; }
+.cal-mes-label{ font-weight:700; font-size:15px; min-width:150px; text-align:center; }
+.cal-dias-semana{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; }
+.cal-dias-semana div{ text-align:center; font-size:11px; color:var(--ink-muted); text-transform:uppercase; letter-spacing:.04em; }
+.cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.cal-cell{
+  aspect-ratio:1/1; border:1px solid var(--border); border-radius:9px; background:var(--paper-2);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+  cursor:pointer; font-size:13.5px; color:var(--ink); position:relative; padding:4px; min-height:44px;
+}
+.cal-cell:hover{ border-color:var(--accent); }
+.cal-cell-outmes{ opacity:.35; }
+.cal-cell-hoje{ border-color:var(--accent); font-weight:700; }
+.cal-cell-selecionado{ background:var(--accent); color:var(--accent-ink); }
+.cal-cell-selecionado .cal-dot{ background:var(--accent-ink); }
+.cal-dot{ width:6px; height:6px; border-radius:50%; background:var(--accent); }
+@media (max-width:560px){
+  .cal-cell{ font-size:11.5px; min-height:36px; }
+  .cal-mes-label{ min-width:110px; font-size:13.5px; }
+}
+
+/* assistente de IA do síndico (Item 8 do backlog) — chat simples, sem
+   biblioteca externa: balões de mensagem + chips de pergunta pronta. */
+.chat-chips{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.chat-chip{
+  background:var(--paper-2); border:1px solid var(--border); color:var(--ink);
+  border-radius:999px; padding:7px 14px; font-size:12.5px; cursor:pointer; font-family:inherit;
+}
+.chat-chip:hover{ border-color:var(--accent); color:var(--accent); }
+.chat-log{ display:flex; flex-direction:column; gap:10px; min-height:70px; max-height:360px; overflow-y:auto; margin-bottom:14px; }
+.chat-empty{ color:var(--ink-muted); font-size:13.5px; text-align:center; padding:20px 0; }
+.chat-msg{ max-width:80%; padding:10px 14px; border-radius:14px; font-size:14px; line-height:1.45; white-space:pre-wrap; }
+.chat-msg-eu{ align-self:flex-end; background:var(--accent); color:var(--accent-ink); border-bottom-right-radius:4px; }
+.chat-msg-ia{ align-self:flex-start; background:var(--paper-2); border:1px solid var(--border); color:var(--ink); border-bottom-left-radius:4px; }
+.chat-msg-erro{ align-self:flex-start; background:var(--danger-bg); color:var(--danger); border-bottom-left-radius:4px; }
+.chat-input-row{ display:flex; gap:10px; }
+.chat-input-row input{
+  flex:1; background:var(--canvas); border:1px solid var(--border); border-radius:7px;
+  padding:10px 12px; font-size:14.5px; color:var(--ink); font-family:inherit;
+}
+@media (max-width:560px){ .chat-msg{ max-width:92%; } }

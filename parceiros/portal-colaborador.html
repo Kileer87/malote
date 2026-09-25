@@ -68,6 +68,15 @@
         <div class="stat"><div class="num" id="stat-retiradas">0</div><div class="lbl">Já retiradas</div></div>
       </div>
 
+      <div class="card" id="card-codigo-retirada">
+        <h2>Autorizar outra pessoa a retirar</h2>
+        <div id="codigo-retirada-resultado" style="display:none;text-align:center;margin-bottom:14px;">
+          <div class="mono" style="font-size:32px;font-weight:800;letter-spacing:.08em;color:var(--accent);" id="codigo-retirada-valor">000000</div>
+          <p class="hint" id="codigo-retirada-validade" style="margin-top:2px;"></p>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-gerar-codigo" style="width:100%;">Gerar código</button>
+      </div>
+
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
           <h2 style="margin-bottom:0;">Aguardando retirada</h2>
@@ -298,6 +307,27 @@
       renderLista('lista-aguardando', aguardando, false);
       renderLista('lista-retiradas', retiradas.slice(0, 15), true);
     }
+
+    document.getElementById('btn-gerar-codigo').addEventListener('click', async function(){
+      var btn = this;
+      btn.disabled = true; btn.textContent = 'Gerando...';
+      try {
+        var r = await malote.rpc('gerar_codigo_retirada');
+        if (r.error) throw r.error;
+        var linha = (r.data || [])[0];
+        if (!linha){ throw new Error('sem retorno'); }
+        var horaValidade = new Date(linha.expira_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('codigo-retirada-valor').textContent = linha.codigo;
+        document.getElementById('codigo-retirada-validade').textContent = 'Válido até ' + horaValidade + ' de hoje, ou até ser usado uma vez. Vale pra todas as suas encomendas aguardando agora.';
+        document.getElementById('codigo-retirada-resultado').style.display = 'block';
+        btn.textContent = 'Gerar novo código';
+      } catch (err) {
+        malotToast(malotErroMsg(err), 'erro');
+        btn.textContent = 'Gerar código';
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     document.getElementById('btn-atualizar').addEventListener('click', carregarEncomendas);
 
