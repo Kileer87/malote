@@ -10,18 +10,67 @@ const TIPOS_VALIDOS = [
   "contagem_periodo",
   "pendentes_contagem",
   "pendentes_lista",
+  "retiradas_lista",
+  "busca_morador",
   "tempo_medio_retirada",
   "pico_horario",
   "status_condominio",
+  "ocorrencias_recentes",
+  "eventos_agenda_proximos",
   "relatorio_dia",
+  "explicar_sistema",
 ] as const;
 type Tipo = (typeof TIPOS_VALIDOS)[number];
 
 const MENSAGEM_NAO_ENTENDI =
   "Não entendi bem essa pergunta. Tenta perguntar de um jeito parecido com: " +
   "\"quantas encomendas chegaram essa semana\", \"quantas estão esperando retirada\", " +
-  "\"quem ainda não retirou\", \"qual o horário de pico\", \"está tudo em dia com o pagamento\" " +
-  "ou \"me dá um relatório de hoje\".";
+  "\"quem ainda não retirou\", \"quem já retirou hoje\", \"tem encomenda pro João\", " +
+  "\"qual o horário de pico\", \"está tudo em dia com o pagamento\", " +
+  "\"quais foram os últimos avisos\", \"o que eu tenho marcado pra essa semana\", " +
+  "\"me dá um relatório de hoje\" ou qualquer dúvida sobre como o sistema funciona.";
+
+// --- Passo 3 (opcional): quando a pergunta é sobre O QUE o Malote oferece ou
+// COMO usar alguma função (não um dado específico desta conta), a IA responde
+// livremente, mas SEM nenhuma ferramenta e SEM nenhum acesso ao banco — só o
+// texto fixo abaixo. Isso mantém a mesma garantia de segurança: a IA nunca
+// toca nos dados de ninguém, só explica o produto.
+const SISTEMA_EXPLICACAO_SINDICO =
+  "Você é o assistente do Malote, respondendo ao SÍNDICO de um condomínio que já usa o sistema. " +
+  "Sua única função aqui é explicar O QUE o Malote oferece e COMO usar cada função — você não tem " +
+  "acesso ao banco de dados desta conta, então NUNCA invente números, nomes ou status específicos " +
+  "(como \"você tem 5 encomendas pendentes\" ou \"o João retirou ontem\"). Se a pergunta pedir um dado " +
+  "real da conta, diga que isso é respondido perguntando diretamente no chat (ex: \"quantas encomendas " +
+  "chegaram essa semana\", \"quem ainda não retirou\", \"tem encomenda pro [nome]\", \"o que eu tenho " +
+  "marcado essa semana\", \"me dá um relatório de hoje\"), pois essa parte é tratada por outra lógica " +
+  "do sistema, não por você.\n\n" +
+  "Recursos que o Malote oferece pro síndico:\n" +
+  "- Bipagem rápida: o porteiro usa um leitor de código de barras Bluetooth pra registrar a chegada de " +
+  "encomendas em segundos, deixando a identificação do morador pra depois, numa fila separada.\n" +
+  "- Registro manual de encomendas: com foto, remetente, observação e tipo de entrega (encomenda, " +
+  "delivery, documento, correspondência, equipamento, material, compra, farmácia, alimentação, outros).\n" +
+  "- Avisos automáticos: o morador recebe notificação (WhatsApp e/ou push) assim que a encomenda chega, " +
+  "e recebe um lembrete automático uma vez por dia enquanto ela não for retirada (entregas de comida não " +
+  "entram nesse lembrete diário, só no aviso imediato).\n" +
+  "- Retirada por código: o morador gera, pelo portal dele, um código numérico válido por 4 horas (ou até " +
+  "ser usado uma vez) pra autorizar qualquer pessoa a retirar a encomenda por ele — o porteiro confirma " +
+  "digitando esse código no sistema.\n" +
+  "- Portal do morador: cada morador acessa pelo celular pra ver o que está aguardando retirada, o " +
+  "histórico do que já retirou, ativar/desativar notificações e gerar o código de retirada.\n" +
+  "- Painel do síndico: dashboard com total de chegadas, retiradas, pendentes e horário de pico; lista de " +
+  "quem ainda não retirou; cadastro de moradores, blocos e apartamentos; cadastro de porteiros com login " +
+  "próprio (acesso restrito só ao leitor de bipagem e à lista de retirada).\n" +
+  "- Livro de ocorrências: manda um aviso em massa (por push) pra todos os moradores do condomínio de uma " +
+  "vez, com histórico de quantos receberam.\n" +
+  "- Calendário/agenda do síndico: reuniões, tarefas e lembretes de uso pessoal, com aviso automático um " +
+  "dia antes de cada compromisso (quando os lembretes de agenda estiverem ativados no painel).\n" +
+  "- Assistente de IA (aqui mesmo): responde perguntas sobre os dados do condomínio e explica como o " +
+  "sistema funciona.\n" +
+  "- Financeiro: assinatura mensal com vencimento; o acesso é bloqueado automaticamente em caso de " +
+  "inadimplência; pagamento via Mercado Pago.\n\n" +
+  "Responda em português, de forma direta e prática, sem inventar recursos que não estão na lista acima. " +
+  "Se perguntarem algo totalmente fora do escopo do Malote, diga educadamente que só pode ajudar com " +
+  "dúvidas sobre o sistema.";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -95,7 +144,8 @@ Deno.serve(async (req: Request) => {
 
     // --- Passo 1: a IA só CLASSIFICA a pergunta num tipo fixo + parâmetros
     // simples. Ela nunca vê o banco, nunca gera SQL, e a resposta dela nunca
-    // é repassada pro síndico — só o "tipo" escolhido é usado a seguir. ---
+    // é repassada pro síndico — só o "tipo" (e os parâmetros simples) escolhidos
+    // são usados a seguir. ---
     const hojeStr = new Date().toISOString().slice(0, 10);
     const anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -113,14 +163,25 @@ Deno.serve(async (req: Request) => {
           "contagem_periodo (quantas encomendas chegaram num período — extraia 'dias': hoje=1, esta semana=7, este mês=30); " +
           "pendentes_contagem (quantas encomendas estão esperando retirada agora, sem período); " +
           "pendentes_lista (quem ainda não retirou — 'dias' opcional se a pergunta mencionar um período de chegada); " +
+          "retiradas_lista (quem já retirou recentemente — extraia 'dias', padrão 7); " +
+          "busca_morador (pergunta sobre um morador específico pelo nome, tipo 'tem encomenda pro João' ou " +
+          "'a Maria já retirou' — extraia 'nome' com o nome citado); " +
           "tempo_medio_retirada (tempo médio até a retirada — extraia 'dias', padrão 30); " +
           "pico_horario (horário do dia com mais chegadas de encomenda); " +
           "status_condominio (se o pagamento/vencimento do condomínio está em dia); " +
+          "ocorrencias_recentes (últimos avisos/comunicados enviados pelo livro de ocorrências); " +
+          "eventos_agenda_proximos (próximos compromissos, reuniões ou tarefas da agenda/calendário do síndico); " +
           "relatorio_dia (um relatório/resumo escrito completo do dia de hoje, juntando chegadas, retiradas, " +
           "pendências e horário de pico — usa esse tipo quando o síndico pedir 'relatório', 'resumo do dia' " +
-          "ou 'como foram as entregas hoje', sem parâmetro 'dias'). " +
-          "Sempre chame a ferramenta responder_pergunta com o tipo mais adequado, mesmo que a pergunta seja parecida " +
-          "mas não idêntica aos exemplos. Nunca responda em texto livre.",
+          "ou 'como foram as entregas hoje', sem parâmetro 'dias'); " +
+          "explicar_sistema (qualquer pergunta sobre O QUE o Malote oferece, PRA QUE serve alguma função ou " +
+          "COMO usar o sistema, sem pedir um dado específico desta conta — por exemplo 'o que é a bipagem', " +
+          "'como funciona a retirada por código', 'o que esse sistema faz', 'pra que serve o livro de " +
+          "ocorrências', 'como eu cadastro um porteiro'). " +
+          "Sempre chame a ferramenta responder_pergunta com o tipo mais adequado, mesmo que a pergunta seja " +
+          "parecida mas não idêntica aos exemplos — se não for claramente um dos tipos de dado específico " +
+          "acima, prefira classificar como explicar_sistema em vez de deixar de responder. Nunca responda em " +
+          "texto livre.",
         tools: [
           {
             name: "responder_pergunta",
@@ -130,6 +191,7 @@ Deno.serve(async (req: Request) => {
               properties: {
                 tipo: { type: "string", enum: TIPOS_VALIDOS as unknown as string[] },
                 dias: { type: "integer", description: "Período em dias mencionado na pergunta, se houver." },
+                nome: { type: "string", description: "Nome de morador citado na pergunta, só pro tipo busca_morador." },
               },
               required: ["tipo"],
             },
@@ -149,9 +211,40 @@ Deno.serve(async (req: Request) => {
     const toolUse = (anthropicData?.content || []).find((b: any) => b.type === "tool_use" && b.name === "responder_pergunta");
     const tipo: Tipo | undefined = toolUse?.input?.tipo;
     const diasParam: number | undefined = toolUse?.input?.dias;
+    const nomeParam: string | undefined = toolUse?.input?.nome;
 
     if (!tipo || !TIPOS_VALIDOS.includes(tipo)) {
       return jsonResponse({ ok: true, resposta: MENSAGEM_NAO_ENTENDI });
+    }
+
+    // --- Passo 2b: pergunta sobre o produto em si — segunda chamada à IA,
+    // agora SEM nenhuma tool e SEM nenhum client de banco disponível pra ela,
+    // grounded só no texto fixo do sistema acima. Retorna direto. ---
+    if (tipo === "explicar_sistema") {
+      const explicacaoResp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicApiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: anthropicModel,
+          max_tokens: 500,
+          system: SISTEMA_EXPLICACAO_SINDICO,
+          messages: [{ role: "user", content: pergunta }],
+        }),
+      });
+
+      let respostaExplicacao = MENSAGEM_NAO_ENTENDI;
+      if (explicacaoResp.ok) {
+        const explicacaoData = await explicacaoResp.json();
+        const bloco = (explicacaoData?.content || []).find((b: any) => b.type === "text");
+        respostaExplicacao = (bloco?.text || "").trim() || MENSAGEM_NAO_ENTENDI;
+      } else {
+        console.error("Erro na API da Anthropic (explicar_sistema):", explicacaoResp.status, await explicacaoResp.text().catch(() => ""));
+      }
+      return jsonResponse({ ok: true, resposta: respostaExplicacao });
     }
 
     // --- Passo 2: roda a consulta FIXA correspondente ao tipo escolhido,
@@ -204,6 +297,70 @@ Deno.serve(async (req: Request) => {
         });
         resposta = "Tem " + linhas.length + " esperando retirada: " + nomes.join(", ") +
           (linhas.length > 10 ? " e mais " + (linhas.length - 10) + "." : ".");
+      }
+    } else if (tipo === "retiradas_lista") {
+      const dias = Number.isFinite(diasParam) && diasParam! > 0 ? Math.min(diasParam!, 365) : 7;
+      const cutoffIso = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+      const r = await supabaseAdmin
+        .from("encomendas")
+        .select("bloco, apto, nome_avulso, retirado_em, retirado_por, moradores(nome)")
+        .eq("condominio_id", condominio.id)
+        .not("retirado_em", "is", null)
+        .gte("retirado_em", cutoffIso)
+        .order("retirado_em", { ascending: false })
+        .limit(30);
+      const linhas = r.data || [];
+      if (!linhas.length) {
+        resposta = "Ninguém retirou encomenda " + periodoTexto(dias) + ".";
+      } else {
+        const nomes = linhas.slice(0, 10).map((e: any) => {
+          const morador = e.moradores?.nome || e.nome_avulso || e.retirado_por || "sem nome cadastrado";
+          const local = e.bloco ? "Bloco " + e.bloco + ", apto " + e.apto : "apto " + e.apto;
+          return morador + " (" + local + ")";
+        });
+        resposta = linhas.length + (linhas.length === 1 ? " retirada " : " retiradas ") + periodoTexto(dias) + ": " +
+          nomes.join(", ") + (linhas.length > 10 ? " e mais " + (linhas.length - 10) + "." : ".");
+      }
+    } else if (tipo === "busca_morador") {
+      const nomeBusca = (nomeParam || "").trim();
+      if (!nomeBusca) {
+        resposta = "Me diz o nome do morador que você quer buscar.";
+      } else {
+        const rMorador = await supabaseAdmin
+          .from("moradores")
+          .select("id, nome, bloco, apto")
+          .eq("condominio_id", condominio.id)
+          .ilike("nome", "%" + nomeBusca + "%")
+          .limit(5);
+        const encontrados = rMorador.data || [];
+        if (!encontrados.length) {
+          resposta = "Não encontrei nenhum morador com o nome \"" + nomeBusca + "\" cadastrado.";
+        } else if (encontrados.length > 1) {
+          const nomes = encontrados.map((m: any) => m.nome + " (Bloco " + m.bloco + ", apto " + m.apto + ")");
+          resposta = "Encontrei mais de um morador parecido: " + nomes.join(", ") + ". Tenta ser mais específico.";
+        } else {
+          const morador = encontrados[0] as any;
+          const rEnc = await supabaseAdmin
+            .from("encomendas")
+            .select("codigo, remetente, criado_em, retirado_em")
+            .eq("condominio_id", condominio.id)
+            .eq("resident_id", morador.id)
+            .order("criado_em", { ascending: false })
+            .limit(10);
+          const encs = rEnc.data || [];
+          const pendentes = encs.filter((e: any) => !e.retirado_em);
+          const local = "Bloco " + morador.bloco + ", apto " + morador.apto;
+          if (!encs.length) {
+            resposta = morador.nome + " (" + local + ") não tem nenhuma encomenda registrada.";
+          } else if (pendentes.length) {
+            resposta = morador.nome + " (" + local + ") tem " + pendentes.length +
+              (pendentes.length === 1 ? " encomenda pendente" : " encomendas pendentes") +
+              " esperando retirada, de um total de " + encs.length + " registrada(s) recentemente.";
+          } else {
+            resposta = morador.nome + " (" + local + ") está com tudo retirado — " + encs.length +
+              " encomenda(s) recentes, todas já retiradas.";
+          }
+        }
       }
     } else if (tipo === "tempo_medio_retirada") {
       const dias = Number.isFinite(diasParam) && diasParam! > 0 ? Math.min(diasParam!, 365) : 30;
@@ -264,6 +421,45 @@ Deno.serve(async (req: Request) => {
         } else {
           resposta = "Está tudo em dia. Seu próximo vencimento é em " + vencFormatado + ".";
         }
+      }
+    } else if (tipo === "ocorrencias_recentes") {
+      const r = await supabaseAdmin
+        .from("ocorrencias")
+        .select("mensagem, criado_em, destinatarios_total, enviados_total")
+        .eq("condominio_id", condominio.id)
+        .order("criado_em", { ascending: false })
+        .limit(5);
+      const linhas = r.data || [];
+      if (!linhas.length) {
+        resposta = "Você ainda não enviou nenhum aviso pelo livro de ocorrências.";
+      } else {
+        const itens = linhas.map((o: any) => {
+          const dataFmt = new Date(o.criado_em).toLocaleDateString("pt-BR");
+          const resumo = o.mensagem.length > 80 ? o.mensagem.slice(0, 80) + "..." : o.mensagem;
+          return "\"" + resumo + "\" (" + dataFmt + ", enviado pra " + o.enviados_total + "/" + o.destinatarios_total + ")";
+        });
+        resposta = "Últimos avisos enviados:\n- " + itens.join("\n- ");
+      }
+    } else if (tipo === "eventos_agenda_proximos") {
+      const hojeSP = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+      const r = await supabaseAdmin
+        .from("eventos_agenda")
+        .select("titulo, data, hora")
+        .eq("condominio_id", condominio.id)
+        .eq("concluido", false)
+        .gte("data", hojeSP)
+        .order("data", { ascending: true })
+        .order("hora", { ascending: true })
+        .limit(10);
+      const linhas = r.data || [];
+      if (!linhas.length) {
+        resposta = "Você não tem nenhum evento pendente na agenda.";
+      } else {
+        const itens = linhas.map((e: any) => {
+          const dataFmt = new Date(e.data + "T00:00:00").toLocaleDateString("pt-BR");
+          return dataFmt + (e.hora ? " às " + String(e.hora).slice(0, 5) : "") + " — " + e.titulo;
+        });
+        resposta = "Próximos eventos da sua agenda:\n- " + itens.join("\n- ");
       }
     } else if (tipo === "relatorio_dia") {
       // fuso fixo America/Sao_Paulo (sem horário de verão desde 2019) — mesmo

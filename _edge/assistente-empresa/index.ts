@@ -10,18 +10,64 @@ const TIPOS_VALIDOS = [
   "contagem_periodo",
   "pendentes_contagem",
   "pendentes_lista",
+  "retiradas_lista",
+  "busca_colaborador",
   "tempo_medio_retirada",
   "pico_horario",
   "status_condominio",
+  "ocorrencias_recentes",
   "relatorio_dia",
+  "explicar_sistema",
 ] as const;
 type Tipo = (typeof TIPOS_VALIDOS)[number];
 
 const MENSAGEM_NAO_ENTENDI =
   "Não entendi bem essa pergunta. Tenta perguntar de um jeito parecido com: " +
   "\"quantas encomendas chegaram essa semana\", \"quantas estão esperando retirada\", " +
-  "\"quem ainda não retirou\", \"qual o horário de pico\", \"está tudo em dia com o pagamento\" " +
-  "ou \"me dá um relatório de hoje\".";
+  "\"quem ainda não retirou\", \"quem já retirou hoje\", \"tem encomenda pro João\", " +
+  "\"qual o horário de pico\", \"está tudo em dia com o pagamento\", " +
+  "\"quais foram os últimos avisos\", \"me dá um relatório de hoje\" ou qualquer dúvida sobre " +
+  "como o sistema funciona.";
+
+// --- Passo 3 (opcional): quando a pergunta é sobre O QUE o Malote oferece ou
+// COMO usar alguma função (não um dado específico desta conta), a IA responde
+// livremente, mas SEM nenhuma ferramenta e SEM nenhum acesso ao banco — só o
+// texto fixo abaixo. Isso mantém a mesma garantia de segurança: a IA nunca
+// toca nos dados de ninguém, só explica o produto.
+const SISTEMA_EXPLICACAO_EMPRESA =
+  "Você é o assistente do Malote Empresarial, respondendo ao RESPONSÁVEL de uma empresa que recebe " +
+  "encomendas de colaboradores. Sua única função aqui é explicar O QUE o Malote oferece e COMO usar cada " +
+  "função — você não tem acesso ao banco de dados desta conta, então NUNCA invente números, nomes ou " +
+  "status específicos (como \"você tem 5 encomendas pendentes\" ou \"o João retirou ontem\"). Se a " +
+  "pergunta pedir um dado real da conta, diga que isso é respondido perguntando diretamente no chat " +
+  "(ex: \"quantas encomendas chegaram essa semana\", \"quem ainda não retirou\", \"tem encomenda pro " +
+  "[nome]\", \"me dá um relatório de hoje\"), pois essa parte é tratada por outra lógica do sistema, não " +
+  "por você.\n\n" +
+  "Recursos que o Malote Empresarial oferece:\n" +
+  "- Bipagem rápida: quem recebe usa um leitor de código de barras Bluetooth pra registrar a chegada de " +
+  "encomendas em segundos, deixando a identificação do colaborador pra depois, numa fila separada.\n" +
+  "- Registro manual de encomendas: com foto, remetente, observação e tipo de entrega (encomenda, " +
+  "delivery, documento, correspondência, equipamento, material, compra, farmácia, alimentação, outros).\n" +
+  "- Estrutura por unidades e setores: a empresa cadastra suas unidades (sedes, filiais, centros de " +
+  "distribuição) e os setores dentro de cada uma, e vincula cada colaborador a uma unidade/setor.\n" +
+  "- Avisos automáticos: o colaborador recebe notificação (WhatsApp e/ou push) assim que a encomenda " +
+  "chega, e um lembrete automático enquanto ela não for retirada.\n" +
+  "- Retirada por código: o colaborador gera, pelo portal dele, um código numérico válido por 4 horas (ou " +
+  "até ser usado uma vez) pra autorizar qualquer pessoa a retirar a encomenda por ele.\n" +
+  "- Portal do colaborador: cada colaborador acessa pelo celular pra ver o que está aguardando retirada, o " +
+  "histórico do que já retirou, ativar/desativar notificações e gerar o código de retirada.\n" +
+  "- Painel da empresa: dashboard com total de chegadas, retiradas, pendentes e horário de pico; lista de " +
+  "quem ainda não retirou; cadastro de unidades, setores e colaboradores; papéis de acesso diferentes " +
+  "(administrador corporativo, gestor de unidade, responsável de setor, operador).\n" +
+  "- Livro de ocorrências: manda um aviso em massa (por push) pra todos os colaboradores de uma vez, com " +
+  "histórico de quantos receberam.\n" +
+  "- Assistente de IA (aqui mesmo): responde perguntas sobre os dados da empresa e explica como o sistema " +
+  "funciona.\n" +
+  "- Planos empresariais: cada plano tem um limite de unidades e setores incluídos, com custo por unidade " +
+  "ou setor extra; assinatura mensal com vencimento e bloqueio automático em caso de inadimplência.\n\n" +
+  "Responda em português, de forma direta e prática, sem inventar recursos que não estão na lista acima. " +
+  "Se perguntarem algo totalmente fora do escopo do Malote, diga educadamente que só pode ajudar com " +
+  "dúvidas sobre o sistema.";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -104,8 +150,8 @@ Deno.serve(async (req: Request) => {
 
     // --- Passo 1: a IA só CLASSIFICA a pergunta num tipo fixo + parâmetros
     // simples. Ela nunca vê o banco, nunca gera SQL, e a resposta dela nunca
-    // é repassada pro responsável da empresa — só o "tipo" escolhido é usado
-    // a seguir. ---
+    // é repassada pro responsável da empresa — só o "tipo" (e os parâmetros
+    // simples) escolhidos são usados a seguir. ---
     const hojeStr = new Date().toISOString().slice(0, 10);
     const anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -123,14 +169,24 @@ Deno.serve(async (req: Request) => {
           "contagem_periodo (quantas encomendas chegaram num período — extraia 'dias': hoje=1, esta semana=7, este mês=30); " +
           "pendentes_contagem (quantas encomendas estão esperando retirada agora, sem período); " +
           "pendentes_lista (quais colaboradores ainda não retiraram — 'dias' opcional se a pergunta mencionar um período de chegada); " +
+          "retiradas_lista (quais colaboradores já retiraram recentemente — extraia 'dias', padrão 7); " +
+          "busca_colaborador (pergunta sobre um colaborador específico pelo nome, tipo 'tem encomenda pro João' " +
+          "ou 'a Maria já retirou' — extraia 'nome' com o nome citado); " +
           "tempo_medio_retirada (tempo médio até a retirada — extraia 'dias', padrão 30); " +
           "pico_horario (horário do dia com mais chegadas de encomenda); " +
           "status_condominio (se o pagamento/vencimento da assinatura está em dia); " +
+          "ocorrencias_recentes (últimos avisos/comunicados enviados pelo livro de ocorrências); " +
           "relatorio_dia (um relatório/resumo escrito completo do dia de hoje, juntando chegadas, retiradas, " +
           "pendências e horário de pico — usa esse tipo quando pedirem 'relatório', 'resumo do dia' " +
-          "ou 'como foram as entregas hoje', sem parâmetro 'dias'). " +
-          "Sempre chame a ferramenta responder_pergunta com o tipo mais adequado, mesmo que a pergunta seja parecida " +
-          "mas não idêntica aos exemplos. Nunca responda em texto livre.",
+          "ou 'como foram as entregas hoje', sem parâmetro 'dias'); " +
+          "explicar_sistema (qualquer pergunta sobre O QUE o Malote oferece, PRA QUE serve alguma função ou " +
+          "COMO usar o sistema, sem pedir um dado específico desta conta — por exemplo 'o que é a bipagem', " +
+          "'como funciona a retirada por código', 'o que esse sistema faz', 'pra que serve o livro de " +
+          "ocorrências', 'como eu cadastro um colaborador'). " +
+          "Sempre chame a ferramenta responder_pergunta com o tipo mais adequado, mesmo que a pergunta seja " +
+          "parecida mas não idêntica aos exemplos — se não for claramente um dos tipos de dado específico " +
+          "acima, prefira classificar como explicar_sistema em vez de deixar de responder. Nunca responda em " +
+          "texto livre.",
         tools: [
           {
             name: "responder_pergunta",
@@ -140,6 +196,7 @@ Deno.serve(async (req: Request) => {
               properties: {
                 tipo: { type: "string", enum: TIPOS_VALIDOS as unknown as string[] },
                 dias: { type: "integer", description: "Período em dias mencionado na pergunta, se houver." },
+                nome: { type: "string", description: "Nome de colaborador citado na pergunta, só pro tipo busca_colaborador." },
               },
               required: ["tipo"],
             },
@@ -159,9 +216,40 @@ Deno.serve(async (req: Request) => {
     const toolUse = (anthropicData?.content || []).find((b: any) => b.type === "tool_use" && b.name === "responder_pergunta");
     const tipo: Tipo | undefined = toolUse?.input?.tipo;
     const diasParam: number | undefined = toolUse?.input?.dias;
+    const nomeParam: string | undefined = toolUse?.input?.nome;
 
     if (!tipo || !TIPOS_VALIDOS.includes(tipo)) {
       return jsonResponse({ ok: true, resposta: MENSAGEM_NAO_ENTENDI });
+    }
+
+    // --- Passo 2b: pergunta sobre o produto em si — segunda chamada à IA,
+    // agora SEM nenhuma tool e SEM nenhum client de banco disponível pra ela,
+    // grounded só no texto fixo do sistema acima. Retorna direto. ---
+    if (tipo === "explicar_sistema") {
+      const explicacaoResp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicApiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: anthropicModel,
+          max_tokens: 500,
+          system: SISTEMA_EXPLICACAO_EMPRESA,
+          messages: [{ role: "user", content: pergunta }],
+        }),
+      });
+
+      let respostaExplicacao = MENSAGEM_NAO_ENTENDI;
+      if (explicacaoResp.ok) {
+        const explicacaoData = await explicacaoResp.json();
+        const bloco = (explicacaoData?.content || []).find((b: any) => b.type === "text");
+        respostaExplicacao = (bloco?.text || "").trim() || MENSAGEM_NAO_ENTENDI;
+      } else {
+        console.error("Erro na API da Anthropic (explicar_sistema):", explicacaoResp.status, await explicacaoResp.text().catch(() => ""));
+      }
+      return jsonResponse({ ok: true, resposta: respostaExplicacao });
     }
 
     // --- Passo 2: roda a consulta FIXA correspondente ao tipo escolhido,
@@ -214,6 +302,73 @@ Deno.serve(async (req: Request) => {
         });
         resposta = "Tem " + linhas.length + " esperando retirada: " + nomes.join(", ") +
           (linhas.length > 10 ? " e mais " + (linhas.length - 10) + "." : ".");
+      }
+    } else if (tipo === "retiradas_lista") {
+      const dias = Number.isFinite(diasParam) && diasParam! > 0 ? Math.min(diasParam!, 365) : 7;
+      const cutoffIso = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+      const r = await supabaseAdmin
+        .from("encomendas")
+        .select("bloco, apto, nome_avulso, retirado_em, retirado_por, colaboradores(nome)")
+        .eq("condominio_id", condominio.id)
+        .not("retirado_em", "is", null)
+        .gte("retirado_em", cutoffIso)
+        .order("retirado_em", { ascending: false })
+        .limit(30);
+      const linhas = r.data || [];
+      if (!linhas.length) {
+        resposta = "Nenhum colaborador retirou encomenda " + periodoTexto(dias) + ".";
+      } else {
+        const nomes = linhas.slice(0, 10).map((e: any) => {
+          const colaborador = e.colaboradores?.nome || e.nome_avulso || e.retirado_por || "sem nome cadastrado";
+          const local = localTexto(e.bloco, e.apto);
+          return colaborador + (local ? " (" + local + ")" : "");
+        });
+        resposta = linhas.length + (linhas.length === 1 ? " retirada " : " retiradas ") + periodoTexto(dias) + ": " +
+          nomes.join(", ") + (linhas.length > 10 ? " e mais " + (linhas.length - 10) + "." : ".");
+      }
+    } else if (tipo === "busca_colaborador") {
+      const nomeBusca = (nomeParam || "").trim();
+      if (!nomeBusca) {
+        resposta = "Me diz o nome do colaborador que você quer buscar.";
+      } else {
+        const rColab = await supabaseAdmin
+          .from("colaboradores")
+          .select("id, nome, unidade_id, setor_id, unidades(nome), setores(nome)")
+          .eq("condominio_id", condominio.id)
+          .ilike("nome", "%" + nomeBusca + "%")
+          .limit(5);
+        const encontrados = (rColab.data || []) as any[];
+        if (!encontrados.length) {
+          resposta = "Não encontrei nenhum colaborador com o nome \"" + nomeBusca + "\" cadastrado.";
+        } else if (encontrados.length > 1) {
+          const nomes = encontrados.map((c) => c.nome + (c.unidades?.nome ? " (" + c.unidades.nome + ")" : ""));
+          resposta = "Encontrei mais de um colaborador parecido: " + nomes.join(", ") + ". Tenta ser mais específico.";
+        } else {
+          const colaborador = encontrados[0];
+          const rEnc = await supabaseAdmin
+            .from("encomendas")
+            .select("codigo, remetente, criado_em, retirado_em")
+            .eq("condominio_id", condominio.id)
+            .eq("colaborador_id", colaborador.id)
+            .order("criado_em", { ascending: false })
+            .limit(10);
+          const encs = rEnc.data || [];
+          const pendentes = encs.filter((e: any) => !e.retirado_em);
+          const local = colaborador.unidades?.nome
+            ? colaborador.unidades.nome + (colaborador.setores?.nome ? " / " + colaborador.setores.nome : "")
+            : "";
+          const rotulo = colaborador.nome + (local ? " (" + local + ")" : "");
+          if (!encs.length) {
+            resposta = rotulo + " não tem nenhuma encomenda registrada.";
+          } else if (pendentes.length) {
+            resposta = rotulo + " tem " + pendentes.length +
+              (pendentes.length === 1 ? " encomenda pendente" : " encomendas pendentes") +
+              " esperando retirada, de um total de " + encs.length + " registrada(s) recentemente.";
+          } else {
+            resposta = rotulo + " está com tudo retirado — " + encs.length +
+              " encomenda(s) recentes, todas já retiradas.";
+          }
+        }
       }
     } else if (tipo === "tempo_medio_retirada") {
       const dias = Number.isFinite(diasParam) && diasParam! > 0 ? Math.min(diasParam!, 365) : 30;
@@ -275,6 +430,24 @@ Deno.serve(async (req: Request) => {
         } else {
           resposta = "Está tudo em dia. Seu próximo vencimento é em " + vencFormatado + ".";
         }
+      }
+    } else if (tipo === "ocorrencias_recentes") {
+      const r = await supabaseAdmin
+        .from("ocorrencias")
+        .select("mensagem, criado_em, destinatarios_total, enviados_total")
+        .eq("condominio_id", condominio.id)
+        .order("criado_em", { ascending: false })
+        .limit(5);
+      const linhas = r.data || [];
+      if (!linhas.length) {
+        resposta = "Você ainda não enviou nenhum aviso pelo livro de ocorrências.";
+      } else {
+        const itens = linhas.map((o: any) => {
+          const dataFmt = new Date(o.criado_em).toLocaleDateString("pt-BR");
+          const resumo = o.mensagem.length > 80 ? o.mensagem.slice(0, 80) + "..." : o.mensagem;
+          return "\"" + resumo + "\" (" + dataFmt + ", enviado pra " + o.enviados_total + "/" + o.destinatarios_total + ")";
+        });
+        resposta = "Últimos avisos enviados:\n- " + itens.join("\n- ");
       }
     } else if (tipo === "relatorio_dia") {
       // fuso fixo America/Sao_Paulo (sem horário de verão desde 2019) — mesmo
