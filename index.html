@@ -338,6 +338,16 @@
   var identChosenResidentId = '';
   var identManualMode = false;
   var identFormDraft = null;     // { remetente, obs, appEntrega, manBloco, manApto, manNome, manTelefone }
+  // Identificação da bipada por foto da etiqueta (câmera/OCR) — mesma ideia
+  // do fluxo "1. Registrar encomenda", só que com suas próprias variáveis
+  // (identPhotoDataUrl etc.) pra não se misturar com photoDataUrl/rawText/
+  // guess do registro normal. Continua dando pra identificar sem foto,
+  // escolhendo manualmente ("Preencher manualmente, sem foto").
+  var identPhotoDataUrl = null;
+  var identOcrBusy = false;
+  var identOcrStatus = null;
+  var identRawText = '';
+  var identGuess = null;
 
   var signingPackageId = null;
   var expandedSigId = null;
@@ -561,6 +571,41 @@
     render();
   }
 
+  // Mesma ideia de runOcr(), só que pra tela "Identificar encomenda bipada"
+  // — usa as variáveis identPhotoDataUrl/identRawText/identGuess/etc pra
+  // não misturar com o fluxo de "1. Registrar encomenda".
+  async function runOcrIdent(dataUrl){
+    identOcrBusy = true; identOcrStatus = 'iniciando leitor...'; render();
+    try {
+      var worker = await Tesseract.createWorker('por', 1, {
+        logger: function(m){
+          if (m.status){
+            identOcrStatus = m.status + (typeof m.progress === 'number' ? ' — ' + Math.round(m.progress*100) + '%' : '');
+            render();
+          }
+        }
+      });
+      var result = await worker.recognize(dataUrl);
+      identRawText = (result && result.data && result.data.text) || '';
+      identGuess = guessFromText(identRawText);
+      identChosenResidentId = identGuess.residentMatch ? identGuess.residentMatch.id : '';
+      identManualMode = !identGuess.residentMatch;
+      await worker.terminate();
+      identOcrStatus = null;
+    } catch (err){
+      identOcrStatus = null;
+      showToast('Não consegui ler a etiqueta automaticamente (sem internet para baixar o leitor?). Preencha manualmente.');
+      identManualMode = true;
+    }
+    identOcrBusy = false;
+    render();
+  }
+
+  function resetIdentPhoto(){
+    identPhotoDataUrl = null; identOcrStatus = null; identOcrBusy = false; identRawText = ''; identGuess = null;
+    identChosenResidentId = ''; identManualMode = false;
+  }
+
   function buildMessage(pkg){
     var resident = pkg.residentId ? findResident(pkg.residentId) : null;
     var nomeCompleto = resident ? resident.nome : pkg.nomeAvulso;
@@ -765,46 +810,93 @@
     html += '<div class="hint" style="margin-top:-4px;">Código ' + esc(p.codigo) + ' · bipada ' + fmtWhen(p.criadoEm) + '</div>';
     html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="cancelar-identificacao">&larr; Deixar pra depois</button></div>';
 
-    var labelSel = modoEmpresarial() ? 'Colaborador' : 'Morador';
-    html += '<div class="field" style="margin-top:0;"><label>' + labelSel + '</label><select data-action="ident-resident-select">';
-    html += '<option value="">' + (modoEmpresarial() ? 'Selecione unidade / setor / nome...' : 'Selecione bloco / apto / nome...') + '</option>';
-    sortedResidents().forEach(function(r){
-      var rotulo = modoEmpresarial()
-        ? (r.bloco ? esc(r.bloco) + ' - ' : '') + esc(r.apto) + ' - ' + esc(r.nome)
-        : (r.bloco ? 'Bloco ' + esc(r.bloco) + ' - ' : '') + 'Apto ' + esc(r.apto) + ' - ' + esc(r.nome);
-      html += '<option value="' + r.id + '"' + (r.id===identChosenResidentId?' selected':'') + '>' + rotulo + '</option>';
-    });
-    html += '<option value="__manual__"' + (identManualMode && !identChosenResidentId ? ' selected' : '') + '>+ ' + labelSel + ' não cadastrado (digitar manualmente)</option>';
-    html += '</select>';
-    if (!residents.length) html += '<div class="hint">' + (modoEmpresarial() ? 'Nenhum colaborador cadastrado ainda. Cadastre no painel da empresa.' : 'Nenhum morador cadastrado ainda nesta versão. Cadastre na aba Moradores.') + '</div>';
-    html += '</div>';
-    if (identManualMode && !identChosenResidentId){
-      var pd = identFormDraft;
-      html += '<div class="form-grid">';
-      if (temBlocos() || modoEmpresarial()) html += fieldInput('ident-manBloco', modoEmpresarial()?'Unidade':'Bloco', pd?pd.manBloco:'', 'Ex: 2 ou Jasmim');
-      html += fieldInput('ident-manApto', modoEmpresarial()?'Setor':'Apto', pd?pd.manApto:'', 'Ex: 002', (temBlocos() || modoEmpresarial())?'':'full');
-      html += fieldInput('ident-manNome', modoEmpresarial()?'Nome do colaborador':'Nome do morador', pd?pd.manNome:'','Ex: Cleiton','full');
-      html += fieldInput('ident-manTelefone','WhatsApp (com DDD)', pd?pd.manTelefone:'','Ex: 11 98765-4321','full');
+    // Passo 1: foto da etiqueta (câmera/OCR) — jeito principal de
+    // identificar quem é o dono, igual já funciona no cadastro normal.
+    // Continua dando pra pular a foto e identificar na mão.
+    if (!identPhotoDataUrl){
+      html += '<div class="capture-options">';
+      html += '<label class="capture-btn">' +
+        '<span class="capture-icon">' + ICON_CAMERA + '</span>' +
+        '<span class="capture-label">Tirar foto</span>' +
+        '<span class="capture-sub">usar a câmera</span>' +
+        '<input type="file" accept="image/*" capture="environment" data-action="ident-photo-input" style="display:none;"></label>';
+      html += '<label class="capture-btn">' +
+        '<span class="capture-icon">' + ICON_GALLERY + '</span>' +
+        '<span class="capture-label">Escolher foto</span>' +
+        '<span class="capture-sub">da galeria</span>' +
+        '<input type="file" accept="image/*" data-action="ident-photo-input" style="display:none;"></label>';
       html += '</div>';
+      html += '<button type="button" class="btn btn-outline manual-btn" data-action="ident-manual-entry">' + ICON_EDIT + ' Preencher manualmente, sem foto</button>';
+    } else {
+      html += '<div class="preview-wrap"><img src="' + identPhotoDataUrl + '" alt="Foto da etiqueta">';
+      html += '<div>';
+      if (!identOcrBusy && !identRawText){
+        html += '<button type="button" class="btn btn-primary" data-action="ident-run-ocr">Ler etiqueta</button>';
+      }
+      html += '<div class="actions"><button type="button" class="btn btn-outline btn-sm" data-action="ident-retake-photo">Trocar foto</button></div>';
+      html += '</div></div>';
+      if (identOcrBusy) html += '<div class="status-line"><span class="spinner"></span>' + esc(identOcrStatus || 'lendo...') + '</div>';
+      if (identRawText){
+        html += '<div class="raw-text">' + esc(identRawText.trim().slice(0,600) || '(nenhum texto reconhecido)') + '</div>';
+      }
     }
 
-    html += '<div class="form-grid">';
-    html += '<div class="field full"><label>Tipo de entrega</label><select id="f-ident-app-entrega">';
-    html += '<option value=""' + (identFormDraft && identFormDraft.appEntrega ? '' : ' selected') + '>Encomenda (não é comida)</option>';
-    ['iFood','Rappi','Uber Eats','99Food','Outro app de comida'].forEach(function(a){
-      html += '<option value="' + a + '"' + (identFormDraft && identFormDraft.appEntrega === a ? ' selected' : '') + '>' + a + '</option>';
-    });
-    html += '</select></div>';
-    html += '<div class="field full"><label>Loja / remetente</label><input type="text" id="f-ident-remetente" placeholder="Ex: Mercado Livre" value="' + esc(identFormDraft ? identFormDraft.remetente : '') + '">';
-    html += '<div class="chips">';
-    ['Mercado Livre','Amazon','Shopee','Correios','Shein','Outro'].forEach(function(c){
-      html += '<button type="button" class="chip" data-action="ident-chip-remetente" data-val="' + c + '">' + c + '</button>';
-    });
-    html += '</div></div>';
-    html += '<div class="field full"><label>Observação (opcional)</label><textarea id="f-ident-obs" placeholder="Ex: caixa grande...">' + esc(identFormDraft ? identFormDraft.obs : '') + '</textarea></div>';
-    html += '</div>';
+    // Passo 2: confirmar quem é — só aparece depois que a etiqueta foi lida
+    // (ou a pessoa optou por preencher manualmente).
+    if (identRawText || identManualMode || identChosenResidentId){
+      if (!identPhotoDataUrl){
+        html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="ident-retake-photo">&larr; Cancelar</button></div>';
+      }
+      var labelSel = modoEmpresarial() ? 'Colaborador' : 'Morador';
+      if (identGuess && identGuess.residentMatch && !identManualMode){
+        var rIdent = identGuess.residentMatch;
+        var localSuggestIdent = modoEmpresarial()
+          ? ((rIdent.bloco ? esc(rIdent.bloco) + ', ' : '') + esc(rIdent.apto))
+          : ((rIdent.bloco ? 'Bloco ' + esc(rIdent.bloco) + ', ' : '') + 'Apto ' + esc(rIdent.apto));
+        html += '<div class="suggest"><div class="txt"><strong>Encontramos: ' + localSuggestIdent + ' — ' + esc(rIdent.nome) + '</strong><span>Confira antes de confirmar.</span></div>';
+        html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="ident-use-manual">Não é esse, escolher outro</button></div></div>';
+      } else {
+        html += '<div class="field" style="margin-top:0;"><label>' + labelSel + '</label><select data-action="ident-resident-select">';
+        html += '<option value="">' + (modoEmpresarial() ? 'Selecione unidade / setor / nome...' : 'Selecione bloco / apto / nome...') + '</option>';
+        sortedResidents().forEach(function(r){
+          var rotulo = modoEmpresarial()
+            ? (r.bloco ? esc(r.bloco) + ' - ' : '') + esc(r.apto) + ' - ' + esc(r.nome)
+            : (r.bloco ? 'Bloco ' + esc(r.bloco) + ' - ' : '') + 'Apto ' + esc(r.apto) + ' - ' + esc(r.nome);
+          html += '<option value="' + r.id + '"' + (r.id===identChosenResidentId?' selected':'') + '>' + rotulo + '</option>';
+        });
+        html += '<option value="__manual__"' + (identManualMode && !identChosenResidentId ? ' selected' : '') + '>+ ' + labelSel + ' não cadastrado (digitar manualmente)</option>';
+        html += '</select>';
+        if (!residents.length) html += '<div class="hint">' + (modoEmpresarial() ? 'Nenhum colaborador cadastrado ainda. Cadastre no painel da empresa.' : 'Nenhum morador cadastrado ainda nesta versão. Cadastre na aba Moradores.') + '</div>';
+        html += '</div>';
+        if (identManualMode && !identChosenResidentId){
+          var pd = identFormDraft;
+          html += '<div class="form-grid">';
+          if (temBlocos() || modoEmpresarial()) html += fieldInput('ident-manBloco', modoEmpresarial()?'Unidade':'Bloco', pd?pd.manBloco:'', 'Ex: 2 ou Jasmim');
+          html += fieldInput('ident-manApto', modoEmpresarial()?'Setor':'Apto', pd?pd.manApto:'', 'Ex: 002', (temBlocos() || modoEmpresarial())?'':'full');
+          html += fieldInput('ident-manNome', modoEmpresarial()?'Nome do colaborador':'Nome do morador', pd?pd.manNome:'','Ex: Cleiton','full');
+          html += fieldInput('ident-manTelefone','WhatsApp (com DDD)', pd?pd.manTelefone:'','Ex: 11 98765-4321','full');
+          html += '</div>';
+        }
+      }
 
-    html += '<div class="actions"><button type="button" class="btn btn-primary" data-action="confirmar-identificacao" data-id="' + p.id + '"' + (identBusy ? ' disabled' : '') + '>' + (identBusy ? 'Salvando...' : 'Confirmar identificação') + '</button></div>';
+      html += '<div class="form-grid">';
+      html += '<div class="field full"><label>Tipo de entrega</label><select id="f-ident-app-entrega">';
+      html += '<option value=""' + (identFormDraft && identFormDraft.appEntrega ? '' : ' selected') + '>Encomenda (não é comida)</option>';
+      ['iFood','Rappi','Uber Eats','99Food','Outro app de comida'].forEach(function(a){
+        html += '<option value="' + a + '"' + (identFormDraft && identFormDraft.appEntrega === a ? ' selected' : '') + '>' + a + '</option>';
+      });
+      html += '</select></div>';
+      html += '<div class="field full"><label>Loja / remetente</label><input type="text" id="f-ident-remetente" placeholder="Ex: Mercado Livre" value="' + esc(identFormDraft ? identFormDraft.remetente : '') + '">';
+      html += '<div class="chips">';
+      ['Mercado Livre','Amazon','Shopee','Correios','Shein','Outro'].forEach(function(c){
+        html += '<button type="button" class="chip" data-action="ident-chip-remetente" data-val="' + c + '">' + c + '</button>';
+      });
+      html += '</div></div>';
+      html += '<div class="field full"><label>Observação (opcional)</label><textarea id="f-ident-obs" placeholder="Ex: caixa grande...">' + esc(identFormDraft ? identFormDraft.obs : '') + '</textarea></div>';
+      html += '</div>';
+
+      html += '<div class="actions"><button type="button" class="btn btn-primary" data-action="confirmar-identificacao" data-id="' + p.id + '"' + (identBusy ? ' disabled' : '') + '>' + (identBusy ? 'Salvando...' : 'Confirmar identificação') + '</button></div>';
+    }
     html += '</div>';
     return html;
   }
@@ -1957,12 +2049,14 @@
   function abrirIdentificacao(id){
     identificandoId = id;
     identChosenResidentId = ''; identManualMode = false; identFormDraft = null;
+    resetIdentPhoto();
     render();
   }
 
   function cancelarIdentificacao(){
     identificandoId = null;
     identChosenResidentId = ''; identManualMode = false; identFormDraft = null;
+    resetIdentPhoto();
     render();
   }
 
@@ -2032,6 +2126,7 @@
         malote.functions.invoke('push-notificar-novo', { body: { encomenda_id: id } }).catch(function(){});
       }
       identificandoId = null; identChosenResidentId = ''; identManualMode = false; identFormDraft = null;
+      resetIdentPhoto();
     } catch (e) {
       showToast('Não consegui salvar a identificação. ' + malotErroMsg(e));
     } finally {
@@ -2073,6 +2168,10 @@
     if (action === 'cancelar-identificacao'){ cancelarIdentificacao(); return; }
     if (action === 'confirmar-identificacao'){ if (identBusy) return; confirmarIdentificacaoBipado(btn.getAttribute('data-id')); return; }
     if (action === 'ident-chip-remetente'){ var inpIdent = document.getElementById('f-ident-remetente'); if (inpIdent) inpIdent.value = btn.getAttribute('data-val'); return; }
+    if (action === 'ident-run-ocr'){ if (identPhotoDataUrl) runOcrIdent(identPhotoDataUrl); return; }
+    if (action === 'ident-retake-photo'){ resetIdentPhoto(); render(); return; }
+    if (action === 'ident-manual-entry'){ resetIdentPhoto(); identManualMode = true; render(); return; }
+    if (action === 'ident-use-manual'){ capturarIdentFormDraft(); identManualMode = true; identChosenResidentId = ''; render(); return; }
 
     if (action === 'compartilhar-foto'){
       var pkgShare = packages.filter(function(x){ return x.id === btn.getAttribute('data-id'); })[0];
@@ -2449,6 +2548,27 @@
         img.src = ev.target.result;
       };
       reader.readAsDataURL(file);
+    }
+    if (e.target.matches('[data-action="ident-photo-input"]')){
+      var fileIdent = e.target.files && e.target.files[0];
+      if (!fileIdent) return;
+      var readerIdent = new FileReader();
+      readerIdent.onload = function(ev){
+        var imgIdent = new Image();
+        imgIdent.onload = function(){
+          var maxWIdent = 900;
+          var scaleIdent = Math.min(1, maxWIdent / imgIdent.width);
+          var canvasIdent = document.createElement('canvas');
+          canvasIdent.width = Math.round(imgIdent.width * scaleIdent);
+          canvasIdent.height = Math.round(imgIdent.height * scaleIdent);
+          var ctxIdent = canvasIdent.getContext('2d');
+          ctxIdent.drawImage(imgIdent, 0, 0, canvasIdent.width, canvasIdent.height);
+          identPhotoDataUrl = canvasIdent.toDataURL('image/jpeg', 0.85);
+          render();
+        };
+        imgIdent.src = ev.target.result;
+      };
+      readerIdent.readAsDataURL(fileIdent);
     }
     if (e.target.matches('[data-action="resident-select"]')){
       capturarPkgFormDraft();
