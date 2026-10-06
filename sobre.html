@@ -40,15 +40,18 @@
     /* ---------- nav ---------- */
     .nav{ position:sticky; top:0; z-index:40; background:rgba(5,7,11,0.82); backdrop-filter:blur(14px); border-bottom:1px solid var(--line); }
     .nav-row{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 28px; max-width:1040px; margin:0 auto; }
-    .brand{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+    .brand{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; row-gap:6px; min-width:0; }
     .brand img{ height:26px; width:auto; border-radius:6px; }
     .brand-text{ font-family:'Manrope',sans-serif; font-weight:700; font-size:14.5px; color:var(--ink); }
     .brand-text b{ color:var(--blue-bright); font-weight:700; }
+    .brand-group{ display:flex; align-items:center; gap:14px; min-width:0; }
+    .brand-sep{ color:var(--ink-dim); font-size:14px; font-weight:600; flex-shrink:0; }
     .nav-ctas{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
 
     /* ---------- hero ---------- */
     .hero{ padding:88px 0 0; background:radial-gradient(900px 460px at 15% -10%, rgba(58,123,239,0.16), transparent 62%); position:relative; overflow:hidden; }
     .hero-mark{ position:absolute; top:50%; right:2%; transform:translateY(-50%); width:600px; max-width:52vw; opacity:0.5; pointer-events:none; z-index:0; mix-blend-mode:screen; }
+    .hero-mark-partner{ position:absolute; top:auto; bottom:6%; right:4%; transform:none; width:170px; max-width:24vw; opacity:0.92; pointer-events:none; z-index:0; mix-blend-mode:normal; filter:drop-shadow(0 18px 34px rgba(0,0,0,0.55)); }
     .hero-inner{ max-width:720px; position:relative; z-index:1; }
     .hero h1{ font-size:44px; line-height:1.15; margin-top:20px; }
     .hero h1 .hl{ color:var(--blue-bright); }
@@ -81,6 +84,10 @@
     .sobre-body b{ color:var(--ink); font-weight:600; }
     .sobre-tags{ display:flex; flex-wrap:wrap; gap:9px; margin-top:26px; }
     .sobre-tag{ font-family:var(--mono); font-size:12px; color:var(--blue-bright); background:var(--blue-dim); border:1px solid rgba(58,123,239,0.28); border-radius:7px; padding:6px 11px; }
+    .sobre-partner{ display:flex; align-items:center; gap:14px; margin-top:26px; padding-top:22px; border-top:1px solid var(--line); }
+    .sobre-partner img{ height:38px; width:auto; flex-shrink:0; }
+    .sobre-partner-text{ font-size:13.5px; color:var(--ink-muted); }
+    .sobre-partner-text b{ color:var(--ink); font-weight:600; }
 
     /* ---------- case study ---------- */
     .case{ background:var(--bg-1); }
@@ -140,6 +147,7 @@
     }
     @media (max-width:480px){
       .nav-cta-secondary{ display:none; }
+      .brand-sep, .brand-partner{ display:none; }
     }
 </style>
 </head>
@@ -148,9 +156,16 @@
 <!-- ================= NAV ================= -->
 <nav class="nav">
   <div class="nav-row">
-    <div class="brand">
-      <img src="images/logo-cq.png" alt="Cleiton Queiroz">
-      <span class="brand-text">Cleiton Queiroz <b>· Soluções em Tecnologia</b></span>
+    <div class="brand-group">
+      <div class="brand">
+        <img src="images/logo-cq.png" alt="Cleiton Queiroz">
+        <span class="brand-text">Cleiton Queiroz <b>· Soluções em Tecnologia</b></span>
+      </div>
+      <span class="brand-sep" aria-hidden="true">+</span>
+      <div class="brand brand-partner">
+        <img src="images/logo-silvana-mark.png" alt="Silvana Pedrosa">
+        <span class="brand-text">Silvana Pedrosa</span>
+      </div>
     </div>
     <div class="nav-ctas">
       <a class="btn btn-ghost btn-sm nav-cta-secondary" href="https://wa.me/5581989004998" target="_blank" rel="noopener">WhatsApp</a>
@@ -162,6 +177,7 @@
 <!-- ================= HERO: MALOTE ================= -->
 <section class="hero" id="malote">
   <img class="hero-mark" src="images/logo-cq.png" alt="">
+  <img class="hero-mark-partner" src="images/logo-silvana-mark.png" alt="">
   <div class="wrap">
     <div class="hero-inner">
       <span class="eyebrow">SISTEMA EM PRODUÇÃO</span>
@@ -237,14 +253,18 @@
       <div>
         <h2>Cleiton Queiroz — Soluções em Tecnologia</h2>
         <div class="sobre-body" style="margin-top:18px;">
-          <p>Sou Cleiton Queiroz, desenvolvedor de software. O Malote é um dos sistemas que já criei — construído sozinho, do banco de dados ao aplicativo que a portaria usa no celular.</p>
+          <p>Sou Cleiton Queiroz, desenvolvedor de software. O Malote é um dos sistemas que já criei — construído por mim, do banco de dados ao aplicativo que a portaria usa no celular.</p>
           <p>Trabalho criando sistemas sob medida pra automatizar processos que hoje ainda dependem de caderno, planilha solta ou mensagem perdida em algum grupo. O Malote nasceu de um problema real assim, foi pro ar, e hoje tem clientes reais usando no dia a dia.</p>
           <p>Se o seu negócio tem algo parecido — um processo manual e repetitivo —, é esse tipo de problema que eu gosto de resolver.</p>
         </div>
         <div class="sobre-tags">
           <span class="sobre-tag">sistemas sob medida</span>
           <span class="sobre-tag">automação de processos</span>
-          <span class="sobre-tag">do zero ao ar, sozinho</span>
+          <span class="sobre-tag">do zero ao ar</span>
+        </div>
+        <div class="sobre-partner">
+          <img src="images/logo-silvana-mark.png" alt="Silvana Pedrosa">
+          <span class="sobre-partner-text">Em parceria com <b>Silvana Pedrosa</b> — Soluções Tecnológicas Inteligentes</span>
         </div>
       </div>
     </div>
@@ -288,6 +308,9 @@
       <div class="brand">
         <img src="images/logo-cq.png" alt="Cleiton Queiroz" style="height:22px;">
         <span class="footer-copy">Cleiton Queiroz — Soluções em Tecnologia</span>
+        <span class="brand-sep" aria-hidden="true">+</span>
+        <img src="images/logo-silvana-mark.png" alt="Silvana Pedrosa" style="height:18px;">
+        <span class="footer-copy">Silvana Pedrosa</span>
       </div>
       <div class="footer-links">
         <a href="#sobre">Sobre</a>
