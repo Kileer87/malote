@@ -185,6 +185,8 @@ tr:last-child td{ border-bottom:none; }
 .cq-credit:hover{ opacity:1; }
 .cq-credit span{ font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:#AFBBD6; }
 .cq-credit img{ display:block; height:18px; width:auto; }
+.cq-credit-logos{ display:flex; align-items:center; gap:7px; }
+.cq-credit-sep{ color:#AFBBD6; font-size:11px; font-weight:600; }
 @media (max-width:480px){ .cq-credit{ padding:5px 8px; } .cq-credit span{ display:none; } .cq-credit img{ height:15px; } }
 
 /* o gráfico de vendas por mês é um SVG de largura fixa (760) que encolhe pra
