@@ -106,6 +106,7 @@
       <p class="hint" id="bloqueado-motivo"></p>
       <h2 style="margin-bottom:4px;">Pagar agora</h2>
       <p class="hint">Assinatura do Malote — <strong id="valor-mensalidade">R$ 59,90/mês</strong>.</p>
+      <p class="hint" id="valor-desconto-info" style="display:none;margin-top:-10px;"></p>
       <div class="actions">
         <button type="button" class="btn btn-primary" id="btn-pagar-cartao" style="width:100%;">Pagar com Pix, crédito ou débito</button>
       </div>
@@ -614,8 +615,17 @@
         }
       }
 
-      var valorMensal = malotCalcularMensalidade(r.data.qtd_apartamentos);
-      document.getElementById('valor-mensalidade').textContent = malotFormatarReais(valorMensal) + '/mês';
+      var valorMensal = malotValorMensalEfetivo(r.data);
+      var descontoAtivo = await malotBuscarDescontoAtivo(r.data.id);
+      var valorComDesconto = descontoAtivo ? malotAplicarDesconto(valorMensal, descontoAtivo.percentual) : valorMensal;
+      document.getElementById('valor-mensalidade').textContent = malotFormatarReais(valorComDesconto) + '/mês';
+      var elDescontoInfo = document.getElementById('valor-desconto-info');
+      if (descontoAtivo){
+        elDescontoInfo.textContent = descontoAtivo.percentual + '% de desconto aplicado (válido até ' + malotFormatarDataSimples(descontoAtivo.valido_ate) + ') — de ' + malotFormatarReais(valorMensal) + '.';
+        elDescontoInfo.style.display = 'block';
+      } else {
+        elDescontoInfo.style.display = 'none';
+      }
 
       var vencInfo = document.getElementById('vencimento-info');
       if (!r.data.bloqueado && r.data.proximo_vencimento){

@@ -55,33 +55,37 @@ function malotFormatarCentavos(centavos){
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-// Regra de preço da assinatura: R$ 59,90/mês cobrindo até 60 apartamentos,
-// + R$ 0,99 por apartamento adicional acima de 60.
-// Importante: a Edge Function mp-criar-pagamento tem a MESMA fórmula
+// Regra de preço da assinatura condominial: faixas fixas por quantidade de
+// apartamentos (substitui a fórmula linear de R$ 0,99/apto extra usada antes).
+// Importante: a Edge Function mp-criar-pagamento tem a MESMA tabela
 // reescrita em TypeScript (ela nunca confia num valor vindo do navegador) —
 // se a regra de preço mudar, atualize os dois lugares.
-var MALOTE_PRECO_BASE = 59.90;
-var MALOTE_APARTAMENTOS_INCLUSOS = 60;
-var MALOTE_PRECO_POR_APARTAMENTO_EXTRA = 0.99;
+var MALOTE_FAIXAS_CONDOMINIAL = [
+  { ateApartamentos: 60, valor: 120.00 },
+  { ateApartamentos: 150, valor: 270.00 },
+  { ateApartamentos: 300, valor: 480.00 },
+  { ateApartamentos: Infinity, valor: 700.00 }
+];
 
 function malotCalcularMensalidade(qtdApartamentos){
   var qtd = parseInt(qtdApartamentos, 10);
   if (isNaN(qtd) || qtd < 1) qtd = 1;
-  var extra = Math.max(0, qtd - MALOTE_APARTAMENTOS_INCLUSOS);
-  var total = MALOTE_PRECO_BASE + extra * MALOTE_PRECO_POR_APARTAMENTO_EXTRA;
-  return Math.round(total * 100) / 100;
+  for (var i = 0; i < MALOTE_FAIXAS_CONDOMINIAL.length; i++){
+    if (qtd <= MALOTE_FAIXAS_CONDOMINIAL[i].ateApartamentos) return MALOTE_FAIXAS_CONDOMINIAL[i].valor;
+  }
+  return MALOTE_FAIXAS_CONDOMINIAL[MALOTE_FAIXAS_CONDOMINIAL.length - 1].valor;
 }
 
 function malotFormatarReais(valor){
   return (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-// Regra de preço do Plano Empresarial: R$ 349,00/mês cobrindo até 500
+// Regra de preço do Plano Empresarial: R$ 300,00/mês cobrindo até 500
 // colaboradores, + R$ 50,00 a cada bloco adicional de 100 colaboradores.
 // Importante: a Edge Function mp-criar-pagamento tem a MESMA fórmula
 // reescrita em TypeScript (ela nunca confia num valor vindo do navegador) —
 // se a regra de preço mudar, atualize os dois lugares.
-var MALOTE_PRECO_BASE_EMPRESARIAL = 349.00;
+var MALOTE_PRECO_BASE_EMPRESARIAL = 300.00;
 var MALOTE_COLABORADORES_INCLUSOS = 500;
 var MALOTE_PRECO_POR_BLOCO_100_EXTRA = 50.00;
 
@@ -92,6 +96,45 @@ function malotCalcularMensalidadeEmpresarial(qtdColaboradores){
   var blocosExtras = Math.ceil((qtd - MALOTE_COLABORADORES_INCLUSOS) / 100);
   var total = MALOTE_PRECO_BASE_EMPRESARIAL + blocosExtras * MALOTE_PRECO_POR_BLOCO_100_EXTRA;
   return Math.round(total * 100) / 100;
+}
+
+// Valor mensal "efetivo" de uma conta: usa o valor manual definido pelo admin
+// (condominios.valor_mensal_manual_centavos) quando existir; senão cai pra
+// faixa automática (condominial ou empresarial, conforme tipo_operacao).
+// Recebe a linha de `condominios` inteira (ou um objeto com os mesmos campos).
+function malotValorMensalEfetivo(condominio){
+  if (!condominio) return 0;
+  if (condominio.valor_mensal_manual_centavos !== null && condominio.valor_mensal_manual_centavos !== undefined){
+    return Math.round(Number(condominio.valor_mensal_manual_centavos)) / 100;
+  }
+  return condominio.tipo_operacao === 'empresarial'
+    ? malotCalcularMensalidadeEmpresarial(condominio.qtd_colaboradores_contratados)
+    : malotCalcularMensalidade(condominio.qtd_apartamentos);
+}
+
+// Aplica um desconto percentual (0-100) sobre um valor em reais.
+function malotAplicarDesconto(valor, percentual){
+  if (!percentual || percentual <= 0) return valor;
+  var p = Math.min(100, Math.max(0, Number(percentual)));
+  return Math.round(valor * (1 - p / 100) * 100) / 100;
+}
+
+// Busca o cupom de desconto ativo (não revogado e ainda dentro do prazo) de
+// um condomínio, se houver. Usa o cliente malote normal (RLS já deixa o
+// próprio dono ou o admin enxergar) — não precisa de RPC pra só ler.
+async function malotBuscarDescontoAtivo(condominioId){
+  if (!condominioId) return null;
+  var hoje = new Date().toISOString().slice(0, 10);
+  var r = await window.malote.from('descontos_concedidos')
+    .select('*')
+    .eq('condominio_id', condominioId)
+    .eq('revogado', false)
+    .gte('valido_ate', hoje)
+    .order('concedido_em', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (r.error || !r.data) return null;
+  return r.data;
 }
 
 function malotFormatarData(iso){
