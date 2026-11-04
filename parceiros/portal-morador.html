@@ -59,6 +59,11 @@
         <button type="button" class="btn btn-primary" id="btn-notif" style="width:100%;">Ativar avisos</button>
       </div>
 
+      <div class="card" id="card-avisos-sindico">
+        <h2>Avisos do síndico</h2>
+        <div id="lista-avisos"><div class="empty">Nenhum aviso por enquanto.</div></div>
+      </div>
+
       <div class="stat-grid">
         <div class="stat"><div class="num" id="stat-aguardando">0</div><div class="lbl">Aguardando retirada</div></div>
         <div class="stat"><div class="num" id="stat-retiradas">0</div><div class="lbl">Já retiradas</div></div>
@@ -294,6 +299,25 @@
       }
     });
 
+    async function carregarAvisos(){
+      var el = document.getElementById('lista-avisos');
+      var r = await malote.rpc('morador_meus_avisos');
+      if (r.error){ return; }
+      var avisos = r.data || [];
+      if (!avisos.length){
+        el.innerHTML = '<div class="empty">Nenhum aviso por enquanto.</div>';
+        return;
+      }
+      var limiteNovo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+      el.innerHTML = avisos.map(function(a){
+        var novo = new Date(a.criado_em).getTime() > limiteNovo;
+        return '<div class="item" style="padding:12px 0;border-top:1px solid var(--line, #e5e7eb);">' +
+          '<div class="meta" style="margin-bottom:4px;">' + malotFormatarData(a.criado_em) +
+          (novo ? ' <span class="badge">Novo</span>' : '') + '</div>' +
+          '<div style="white-space:pre-wrap;">' + esc(a.mensagem) + '</div></div>';
+      }).join('');
+    }
+
     async function carregarEncomendas(){
       var r = await malote.rpc('morador_minhas_encomendas');
       if (r.error){ malotToast(malotErroMsg(r.error), 'erro'); return; }
@@ -329,7 +353,7 @@
 
     document.getElementById('btn-atualizar').addEventListener('click', async function(){
       var btn = this; btn.disabled = true; btn.textContent = 'Atualizando...';
-      try { await carregarEncomendas(); }
+      try { await carregarEncomendas(); await carregarAvisos(); }
       finally { btn.disabled = false; btn.textContent = 'Atualizar'; }
     });
 
@@ -361,6 +385,7 @@
         document.getElementById('morador-unidade').textContent = unidade;
 
         await carregarEncomendas();
+        await carregarAvisos();
         atualizarStatusNotificacoes();
 
         document.getElementById('carregando').style.display = 'none';
