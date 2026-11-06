@@ -159,17 +159,34 @@
         <div id="dash-page-historico" class="dash-page" style="display:none;">
           <div id="painel-historico" class="card">
             <h2 style="margin-bottom:4px;">Histórico de entregas</h2>
-            <p class="hint">Todas as encomendas registradas, com data de chegada e de retirada.</p>
+            <p class="hint">Todas as encomendas registradas, com quem recebeu na portaria, quem entregou ao morador e as datas. O nome do porteiro é gravado automaticamente pelo sistema, a partir do login dele, e não pode ser alterado depois.</p>
             <div class="actions" style="margin-top:0;margin-bottom:14px;">
               <button type="button" class="btn btn-primary btn-sm hist-filtro" data-periodo="30">30 dias</button>
               <button type="button" class="btn btn-outline btn-sm hist-filtro" data-periodo="7">7 dias</button>
               <button type="button" class="btn btn-outline btn-sm hist-filtro" data-periodo="90">90 dias</button>
               <button type="button" class="btn btn-outline btn-sm hist-filtro" data-periodo="0">Tudo</button>
             </div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px;">
+              <div class="field" style="margin:0;min-width:200px;flex:1;">
+                <label for="hist-filtro-porteiro">Porteiro / recepção</label>
+                <select id="hist-filtro-porteiro"><option value="">Todos</option></select>
+              </div>
+              <div class="field" style="margin:0;">
+                <label for="hist-data-de">De</label>
+                <input type="date" id="hist-data-de">
+              </div>
+              <div class="field" style="margin:0;">
+                <label for="hist-data-ate">Até</label>
+                <input type="date" id="hist-data-ate">
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="hist-limpar-filtros">Limpar filtros</button>
+              <button type="button" class="btn btn-primary btn-sm" id="hist-imprimir">Imprimir relatório</button>
+            </div>
+            <p class="hint" id="historico-resumo" style="display:none;"></p>
             <p class="hint" id="historico-vazio" style="display:none;margin-bottom:0;">Nenhuma encomenda nesse período.</p>
             <div class="table-wrap" id="historico-tabela-wrap" style="display:none;">
               <table>
-                <thead><tr><th>Morador</th><th>Chegou em</th><th>Status</th><th>Retirado em</th><th>Retirado por</th></tr></thead>
+                <thead><tr><th>Morador</th><th>Chegou em</th><th>Recebido por (portaria)</th><th>Status</th><th>Retirado em</th><th>Retirado por</th><th>Entregue por (portaria)</th></tr></thead>
                 <tbody id="historico-tbody"></tbody>
               </table>
             </div>
@@ -699,41 +716,111 @@
     });
 
     var historicoPeriodoAtual = 30;
+    var historicoLinhas = [];      // tudo que veio do banco no período
+    var historicoVisiveis = [];    // depois dos filtros de porteiro e data
+
+    function histNomeOperador(nome, cargo){
+      if (!nome) return '';
+      return (cargo && cargo !== 'Síndico' && cargo !== 'Administrador' ? cargo + ' ' : '') + nome;
+    }
+    function histOperadorRecebeu(e){ return histNomeOperador(e.registrado_por_nome, e.registrado_por_cargo); }
+    function histOperadorEntregou(e){ return histNomeOperador(e.entregue_por_nome, e.entregue_por_cargo); }
+    function histLocal(e){
+      var t = e.bloco ? ('Bloco ' + e.bloco + ', Apto ' + e.apto) : ('Apto ' + e.apto);
+      if (e.nome_avulso) t += ' — ' + e.nome_avulso;
+      return t;
+    }
+    function histDataHora(iso){
+      if (!iso) return '—';
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+    function histInicioDia(valor){ return valor ? new Date(valor + 'T00:00:00') : null; }
+    function histFimDia(valor){ return valor ? new Date(valor + 'T23:59:59.999') : null; }
+
+    function histAplicarFiltros(){
+      var porteiro = document.getElementById('hist-filtro-porteiro').value;
+      var de = histInicioDia(document.getElementById('hist-data-de').value);
+      var ate = histFimDia(document.getElementById('hist-data-ate').value);
+      historicoVisiveis = historicoLinhas.filter(function(e){
+        if (porteiro && histOperadorRecebeu(e) !== porteiro && histOperadorEntregou(e) !== porteiro) return false;
+        if (de || ate){
+          // conta se a encomenda chegou OU foi entregue dentro do intervalo
+          var dentro = function(iso){
+            if (!iso) return false;
+            var t = new Date(iso);
+            return (!de || t >= de) && (!ate || t <= ate);
+          };
+          if (!dentro(e.criado_em) && !dentro(e.retirado_em)) return false;
+        }
+        return true;
+      });
+      histRenderizar();
+    }
+
+    function histRenderizar(){
+      var wrap = document.getElementById('historico-tabela-wrap');
+      var vazio = document.getElementById('historico-vazio');
+      var resumo = document.getElementById('historico-resumo');
+      if (!historicoVisiveis.length){
+        wrap.style.display = 'none';
+        resumo.style.display = 'none';
+        vazio.style.display = 'block';
+        return;
+      }
+      vazio.style.display = 'none';
+      wrap.style.display = 'block';
+      var entregues = historicoVisiveis.filter(function(e){ return !!e.retirado_em; }).length;
+      resumo.style.display = 'block';
+      resumo.textContent = historicoVisiveis.length + ' encomenda' + (historicoVisiveis.length === 1 ? '' : 's') +
+        ' · ' + entregues + ' entregue' + (entregues === 1 ? '' : 's') + ' · ' + (historicoVisiveis.length - entregues) + ' aguardando retirada.';
+      document.getElementById('historico-tbody').innerHTML = historicoVisiveis.map(function(e){
+        var statusBadge = e.retirado_em ? '<span class="badge badge-ok">Retirado</span>' : '<span class="badge badge-warn">Aguardando</span>';
+        return '<tr><td>' + esc(histLocal(e)) + '</td>' +
+          '<td>' + esc(histDataHora(e.criado_em)) + '</td>' +
+          '<td>' + (esc(histOperadorRecebeu(e)) || '—') + '</td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td>' + (e.retirado_em ? esc(histDataHora(e.retirado_em)) : '—') + '</td>' +
+          '<td>' + (esc(e.retirado_por) || '—') + '</td>' +
+          '<td>' + (e.retirado_em ? (esc(histOperadorEntregou(e)) || '—') : '—') + '</td></tr>';
+      }).join('');
+    }
+
+    function histAtualizarListaPorteiros(){
+      var sel = document.getElementById('hist-filtro-porteiro');
+      var atual = sel.value;
+      var nomes = {};
+      historicoLinhas.forEach(function(e){
+        var a = histOperadorRecebeu(e), b = histOperadorEntregou(e);
+        if (a) nomes[a] = true;
+        if (b) nomes[b] = true;
+      });
+      var lista = Object.keys(nomes).sort(function(x, y){ return x.localeCompare(y, 'pt-BR'); });
+      sel.innerHTML = '<option value="">Todos</option>' + lista.map(function(n){
+        return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+      }).join('');
+      if (atual && nomes[atual]) sel.value = atual;
+    }
+
     async function carregarHistoricoEntregas(periodoDias){
       if (typeof periodoDias === 'number') historicoPeriodoAtual = periodoDias;
       if (!meuCondominioId) return;
 
       var q = malote.from('encomendas')
-        .select('bloco, apto, nome_avulso, criado_em, retirado_em, retirado_por')
+        .select('codigo, remetente, bloco, apto, nome_avulso, criado_em, retirado_em, retirado_por, registrado_por_nome, registrado_por_cargo, entregue_por_nome, entregue_por_cargo')
         .eq('condominio_id', meuCondominioId)
         .order('criado_em', { ascending: false })
-        .limit(300);
+        .limit(1000);
       if (historicoPeriodoAtual > 0){
         var cutoffIso = new Date(Date.now() - historicoPeriodoAtual * 24 * 60 * 60 * 1000).toISOString();
         q = q.gte('criado_em', cutoffIso);
       }
 
-      var wrap = document.getElementById('historico-tabela-wrap');
-      var vazio = document.getElementById('historico-vazio');
       var r = await q;
-      if (r.error || !r.data || !r.data.length){
-        wrap.style.display = 'none';
-        vazio.style.display = 'block';
-        return;
-      }
-
-      vazio.style.display = 'none';
-      wrap.style.display = 'block';
-      document.getElementById('historico-tbody').innerHTML = r.data.map(function(e){
-        var localTxt = e.bloco ? ('Bloco ' + e.bloco + ', Apto ' + e.apto) : ('Apto ' + e.apto);
-        if (e.nome_avulso) localTxt += ' — ' + e.nome_avulso;
-        var statusBadge = e.retirado_em ? '<span class="badge badge-ok">Retirado</span>' : '<span class="badge badge-warn">Aguardando</span>';
-        return '<tr><td>' + localTxt + '</td>' +
-          '<td>' + malotFormatarData(e.criado_em) + '</td>' +
-          '<td>' + statusBadge + '</td>' +
-          '<td>' + (e.retirado_em ? malotFormatarData(e.retirado_em) : '—') + '</td>' +
-          '<td>' + (e.retirado_por || '—') + '</td></tr>';
-      }).join('');
+      historicoLinhas = (r.error || !r.data) ? [] : r.data;
+      histAtualizarListaPorteiros();
+      histAplicarFiltros();
     }
     document.querySelectorAll('.hist-filtro').forEach(function(btn){
       btn.addEventListener('click', function(){
@@ -741,6 +828,74 @@
         this.classList.remove('btn-outline'); this.classList.add('btn-primary');
         carregarHistoricoEntregas(parseInt(this.getAttribute('data-periodo'), 10));
       });
+    });
+    ['hist-filtro-porteiro', 'hist-data-de', 'hist-data-ate'].forEach(function(id){
+      document.getElementById(id).addEventListener('change', async function(){
+        // Com datas escolhidas, busca tudo (não só os últimos N dias), senão
+        // um intervalo antigo apareceria vazio.
+        if (id !== 'hist-filtro-porteiro' && (document.getElementById('hist-data-de').value || document.getElementById('hist-data-ate').value) && historicoPeriodoAtual !== 0){
+          document.querySelectorAll('.hist-filtro').forEach(function(b){
+            var ehTudo = b.getAttribute('data-periodo') === '0';
+            b.classList.toggle('btn-primary', ehTudo); b.classList.toggle('btn-outline', !ehTudo);
+          });
+          await carregarHistoricoEntregas(0);
+          return;
+        }
+        histAplicarFiltros();
+      });
+    });
+    document.getElementById('hist-limpar-filtros').addEventListener('click', function(){
+      document.getElementById('hist-filtro-porteiro').value = '';
+      document.getElementById('hist-data-de').value = '';
+      document.getElementById('hist-data-ate').value = '';
+      histAplicarFiltros();
+    });
+
+    // Relatório formal (A4, paisagem) para imprimir ou salvar em PDF, com campo
+    // de assinatura do responsável pela portaria e do síndico.
+    document.getElementById('hist-imprimir').addEventListener('click', function(){
+      if (!historicoVisiveis.length){ alert('Não há encomendas para imprimir com esses filtros.'); return; }
+      var porteiro = document.getElementById('hist-filtro-porteiro').value;
+      var de = document.getElementById('hist-data-de').value;
+      var ate = document.getElementById('hist-data-ate').value;
+      var periodoTxt;
+      if (de || ate){
+        periodoTxt = (de ? new Date(de + 'T00:00:00').toLocaleDateString('pt-BR') : 'início') + ' a ' + (ate ? new Date(ate + 'T00:00:00').toLocaleDateString('pt-BR') : 'hoje');
+      } else if (historicoPeriodoAtual > 0){
+        periodoTxt = 'últimos ' + historicoPeriodoAtual + ' dias';
+      } else {
+        periodoTxt = 'todo o período';
+      }
+      var entregues = historicoVisiveis.filter(function(e){ return !!e.retirado_em; }).length;
+      var linhas = historicoVisiveis.slice().sort(function(a, b){ return new Date(a.criado_em) - new Date(b.criado_em); }).map(function(e, i){
+        return '<tr><td>' + (i + 1) + '</td><td>' + esc(e.codigo || '—') + '</td><td>' + esc(histLocal(e)) + '</td><td>' + esc(e.remetente || '—') + '</td>' +
+          '<td>' + esc(histDataHora(e.criado_em)) + '</td><td>' + (esc(histOperadorRecebeu(e)) || '—') + '</td>' +
+          '<td>' + (e.retirado_em ? esc(histDataHora(e.retirado_em)) : 'Aguardando') + '</td>' +
+          '<td>' + (e.retirado_em ? (esc(e.retirado_por) || '—') : '—') + '</td>' +
+          '<td>' + (e.retirado_em ? (esc(histOperadorEntregou(e)) || '—') : '—') + '</td></tr>';
+      }).join('');
+      var emitido = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      var doc =
+        '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório da portaria — ' + esc(nomeCondominioAtual) + '</title>' +
+        '<style>@page{size:A4 landscape;margin:14mm}body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px;margin:0}' +
+        'h1{font-size:18px;margin:0 0 2px}.sub{color:#444;margin:0 0 12px}.meta{display:flex;flex-wrap:wrap;gap:6px 28px;margin-bottom:12px;font-size:11px}' +
+        'table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eee}' +
+        'tr{page-break-inside:avoid}.ass{display:flex;gap:60px;margin-top:46px}.ass div{flex:1;border-top:1px solid #111;padding-top:4px;text-align:center}' +
+        '.rod{margin-top:14px;color:#666;font-size:9px}</style></head><body>' +
+        '<h1>Relatório de movimentação da portaria</h1><p class="sub">' + esc(nomeCondominioAtual) + '</p>' +
+        '<div class="meta"><span><b>Período:</b> ' + esc(periodoTxt) + '</span>' +
+        '<span><b>Porteiro / recepção:</b> ' + esc(porteiro || 'Todos') + '</span>' +
+        '<span><b>Total:</b> ' + historicoVisiveis.length + ' encomenda(s)</span>' +
+        '<span><b>Entregues:</b> ' + entregues + '</span>' +
+        '<span><b>Aguardando retirada:</b> ' + (historicoVisiveis.length - entregues) + '</span>' +
+        '<span><b>Emitido em:</b> ' + esc(emitido) + '</span></div>' +
+        '<table><thead><tr><th>#</th><th>Código</th><th>Destinatário</th><th>Remetente</th><th>Chegou em</th><th>Recebido por</th><th>Retirado em</th><th>Retirado por</th><th>Entregue por</th></tr></thead><tbody>' + linhas + '</tbody></table>' +
+        '<div class="ass"><div>Responsável pela portaria</div><div>Síndico / Administração</div></div>' +
+        '<p class="rod">Os nomes de quem recebeu e de quem entregou são registrados automaticamente pelo sistema Malote, a partir do login de cada pessoa.</p>' +
+        '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body></html>';
+      var w = window.open('', '_blank');
+      if (!w){ alert('O navegador bloqueou a janela do relatório. Permita pop-ups para este site e tente de novo.'); return; }
+      w.document.open(); w.document.write(doc); w.document.close();
     });
 
     async function carregarOcorrencias(){

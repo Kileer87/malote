@@ -1517,6 +1517,10 @@
     html += retirado ? '<span class="pill picked">Retirado</span>' : '<span class="pill waiting">Aguardando retirada</span>';
     if (p.appEntrega) html += '<span class="pill food">🍔 ' + esc(p.appEntrega) + '</span>';
     html += '<span><strong>' + esc(r?r.nome:p.nomeAvulso) + '</strong> · ' + localHtml(r?r.bloco:p.bloco, r?r.apto:p.apto) + '</span>';
+    var recebidoTxt = rotuloOperador(p.registradoPorNome, p.registradoPorCargo);
+    var entregueTxt = rotuloOperador(p.entreguePorNome, p.entreguePorCargo);
+    if (recebidoTxt) html += '<span class="hwhen" title="Quem recebeu a encomenda na portaria">recebida por ' + esc(recebidoTxt) + '</span>';
+    if (retirado && entregueTxt) html += '<span class="hwhen" title="Quem entregou a encomenda na retirada">entregue por ' + esc(entregueTxt) + '</span>';
     if (retirado){
       html += '<span class="hwhen">retirado ' + fmtWhen(p.retiradoEm) + '</span>';
       html += '<button type="button" class="btn btn-outline btn-sm" data-action="ver-assinatura" data-id="' + p.id + '">' + (expandedSigId===p.id?'Ocultar assinatura':'Ver assinatura') + '</button>';
@@ -1531,7 +1535,9 @@
     html += '</div>';
     if (retirado && expandedSigId === p.id){
       html += '<div class="hist-item" style="display:block;">';
-      html += '<div class="hint" style="margin-bottom:8px;">Recebido por: <strong style="color:var(--ink);">' + esc(p.retiradoPor || '—') + '</strong></div>';
+      html += '<div class="hint" style="margin-bottom:8px;">Retirado por: <strong style="color:var(--ink);">' + esc(p.retiradoPor || '—') + '</strong></div>';
+      html += '<div class="hint" style="margin-bottom:8px;">Recebida na portaria por: <strong style="color:var(--ink);">' + esc(recebidoTxt || '—') + '</strong> em ' + fmtWhen(p.criadoEm) + '</div>';
+      html += '<div class="hint" style="margin-bottom:8px;">Entregue ao morador por: <strong style="color:var(--ink);">' + esc(entregueTxt || '—') + '</strong> em ' + fmtWhen(p.retiradoEm) + '</div>';
       if (p.retiradoAssinatura) html += '<img class="sig-preview" src="' + p.retiradoAssinatura + '" alt="Assinatura">';
       html += '</div>';
     }
@@ -1658,8 +1664,21 @@
       nomeAvulso: row.nome_avulso || '', telefoneAvulso: row.telefone_avulso || '', appEntrega: row.app_entrega || null,
       retiradoEm: row.retirado_em || null, retiradoPor: row.retirado_por || '', retiradoAssinatura: row.retirado_assinatura || null,
       fotoPath: row.foto_path || null,
-      origemBipagem: !!row.origem_bipagem, pendenteIdentificacao: !!row.pendente_identificacao
+      origemBipagem: !!row.origem_bipagem, pendenteIdentificacao: !!row.pendente_identificacao,
+      registradoPorNome: row.registrado_por_nome || '', registradoPorCargo: row.registrado_por_cargo || '',
+      entreguePorNome: row.entregue_por_nome || '', entreguePorCargo: row.entregue_por_cargo || ''
     };
+  }
+  // Quem está operando agora (só pra mostrar na tela na hora, antes de a nuvem
+  // devolver o dado). O carimbo oficial — que ninguém consegue falsificar — é
+  // gravado pelo próprio banco de dados a partir do login.
+  function operadorLocal(){
+    if (modoPorteiro && porteiroAtual) return { nome: porteiroAtual.nome, cargo: porteiroAtual.cargo || 'Porteiro' };
+    return { nome: 'Administração', cargo: modoEmpresarial() ? 'Administrador' : 'Síndico' };
+  }
+  function rotuloOperador(nome, cargo){
+    if (!nome) return '';
+    return (cargo && cargo !== 'Administração' ? cargo + ' ' : '') + nome;
   }
   function rowFromEncomenda(p){
     var row = {
@@ -1977,6 +1996,7 @@
       var r = await malote.from('encomendas').insert(rowFromEncomenda(pkg));
       if (r.error) throw r.error;
       // mesma proteção contra corrida com o eco em tempo real da própria inserção.
+      var opReg = operadorLocal(); pkg.registradoPorNome = opReg.nome; pkg.registradoPorCargo = opReg.cargo;
       if (!packages.some(function(x){ return x.id === pkg.id; })) packages.push(pkg);
       return pkg;
     } catch (e) {
@@ -2036,6 +2056,7 @@
       };
       var r = await malote.from('encomendas').insert(rowFromEncomenda(pkg));
       if (r.error) throw r.error;
+      var opReg = operadorLocal(); pkg.registradoPorNome = opReg.nome; pkg.registradoPorCargo = opReg.cargo;
       if (!packages.some(function(x){ return x.id === pkg.id; })) packages.push(pkg);
       bipagemUltimas.unshift({ codigo: pkg.codigo, hora: fmtWhen(pkg.criadoEm) });
       if (bipagemUltimas.length > 8) bipagemUltimas.length = 8;
@@ -2254,6 +2275,7 @@
         pkgAlvo.retiradoEm = retiradoEmIso;
         pkgAlvo.retiradoPor = nomeRecebeu;
         pkgAlvo.retiradoAssinatura = assinaturaPng;
+        var opEnt = operadorLocal(); pkgAlvo.entreguePorNome = opEnt.nome; pkgAlvo.entreguePorCargo = opEnt.cargo;
         signingPackageId = null;
         showToast('Retirada registrada!');
       } catch (err) {
