@@ -210,8 +210,21 @@
 
         <div id="dash-page-pagamentos" class="dash-page" style="display:none;">
 
+    <div id="painel-mensalidades" class="card" style="display:none;">
+      <h2 style="margin-bottom:4px;">Mensalidades</h2>
+      <p class="hint" id="mensalidades-resumo" style="margin-bottom:10px;"></p>
+      <p class="hint" id="mensalidades-sem-data" style="display:none;margin-bottom:0;"></p>
+      <div class="table-wrap" id="mensalidades-tabela-wrap" style="display:none;">
+        <table>
+          <thead><tr><th>Mês</th><th>Vencimento</th><th>Valor</th><th>Situação</th><th>Ação</th></tr></thead>
+          <tbody id="mensalidades-tbody"></tbody>
+        </table>
+      </div>
+      <p class="hint" id="mensalidades-rodape" style="display:none;margin-top:10px;margin-bottom:0;">Os meses seguintes ficam disponíveis para pagamento conforme o vencimento se aproxima. Depois de pago, o recibo aparece no histórico abaixo.</p>
+    </div>
+
     <div id="painel-pagamentos" class="card" style="display:none;">
-      <h2 style="margin-bottom:4px;">Pagamentos</h2>
+      <h2 style="margin-bottom:4px;">Histórico de pagamentos</h2>
       <p class="hint">Mesmos valores e competências que aparecem no financeiro da administração.</p>
       <p class="hint" id="pagamentos-vazio" style="display:none;margin-bottom:0;">Nenhum pagamento registrado ainda.</p>
       <div class="table-wrap" id="pagamentos-tabela-wrap" style="display:none;">
@@ -664,7 +677,13 @@
         atualizarHintValorEditar();
       }
 
-      await carregarPagamentos(r.data.id);
+      await carregarPagamentos(r.data.id, {
+        proximoVencimento: r.data.proximo_vencimento || null,
+        valorBase: valorMensal,
+        valorComDesconto: valorComDesconto,
+        desconto: descontoAtivo || null,
+        emTeste: !!r.data.em_teste
+      });
       await carregarPicoHorario();
       await carregarDashboardEntregas(r.data.id);
 
@@ -1371,12 +1390,87 @@
     // administração usa na aba Financeiro do admin — mostrar essa tabela em
     // vez da "pagamentos" (que só guarda tentativas de cobrança no cartão)
     // garante que síndico e administração enxergam sempre os mesmos valores.
-    async function carregarPagamentos(condominioId){
+    // Calendário das próximas mensalidades: parte do próximo vencimento
+    // cadastrado e projeta os meses seguintes (mesmo dia, ajustando meses mais
+    // curtos), cruzando com o livro-razão pra marcar o que já está pendente.
+    function mensalidadeSomarMeses(dataStr, meses){
+      var p = dataStr.split('-');
+      var ano = parseInt(p[0], 10), mes = parseInt(p[1], 10) - 1, dia = parseInt(p[2], 10);
+      var total = ano * 12 + mes + meses;
+      var a = Math.floor(total / 12), m = total % 12;
+      var ultimo = new Date(a, m + 1, 0).getDate();
+      var d = Math.min(dia, ultimo);
+      return a + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    }
+    function renderMensalidades(linhasLivro, ctx){
+      var card = document.getElementById('painel-mensalidades');
+      var resumo = document.getElementById('mensalidades-resumo');
+      var semData = document.getElementById('mensalidades-sem-data');
+      var wrap = document.getElementById('mensalidades-tabela-wrap');
+      var tbody = document.getElementById('mensalidades-tbody');
+      var rodape = document.getElementById('mensalidades-rodape');
+      card.style.display = 'block';
+
+      var valorTxt = malotFormatarReais(ctx.valorComDesconto) + '/mês';
+      var txt = 'Sua mensalidade: <strong>' + valorTxt + '</strong>';
+      if (ctx.desconto) txt += ' (' + ctx.desconto.percentual + '% de desconto até ' + malotFormatarDataSimples(ctx.desconto.valido_ate) + '; valor normal ' + malotFormatarReais(ctx.valorBase) + ')';
+      resumo.innerHTML = txt + '.';
+
+      if (!ctx.proximoVencimento){
+        wrap.style.display = 'none'; rodape.style.display = 'none';
+        semData.style.display = 'block';
+        semData.textContent = 'O dia de vencimento da sua mensalidade ainda será combinado com a administração do Malote. Assim que for definido, os próximos meses aparecem aqui.';
+        return;
+      }
+      semData.style.display = 'none';
+
+      var hojeStr = new Date().toISOString().slice(0, 10);
+      var hoje0h = new Date(); hoje0h.setHours(0, 0, 0, 0);
+      var pendentes = {};
+      (linhasLivro || []).forEach(function(p){ if (p.status === 'pendente') pendentes[String(p.competencia).slice(0, 7)] = p; });
+
+      var linhas = [];
+      for (var i = 0; i < 12; i++){
+        var venc = mensalidadeSomarMeses(ctx.proximoVencimento, i);
+        var chave = venc.slice(0, 7);
+        var valor = (ctx.desconto && (!ctx.desconto.valido_ate || venc <= ctx.desconto.valido_ate)) ? ctx.valorComDesconto : ctx.valorBase;
+        if (!ctx.desconto) valor = ctx.valorBase;
+        var dias = Math.round((new Date(venc + 'T00:00:00') - hoje0h) / 86400000);
+        var situacao, acao = '<span class="hint" style="margin:0;">—</span>';
+        if (i === 0){
+          if (ctx.emTeste){
+            situacao = dias < 0 ? '<span class="badge badge-danger">Teste encerrado</span>' : '<span class="badge badge-warn">Teste grátis até esta data</span>';
+          } else if (dias < 0){
+            situacao = '<span class="badge badge-danger">Atrasada (' + Math.abs(dias) + ' dia' + (Math.abs(dias) === 1 ? '' : 's') + ')</span>';
+          } else if (dias === 0){
+            situacao = '<span class="badge badge-warn">Vence hoje</span>';
+          } else {
+            situacao = '<span class="badge badge-warn">Em aberto · vence em ' + dias + ' dia' + (dias === 1 ? '' : 's') + '</span>';
+          }
+          acao = '<button type="button" class="btn btn-primary btn-sm" data-pagar-mensalidade="1">Pagar</button>';
+        } else if (pendentes[chave]){
+          situacao = '<span class="badge badge-warn">Pendente</span>';
+        } else {
+          situacao = '<span class="badge badge-muted">A vencer</span>';
+        }
+        linhas.push('<tr><td>' + malotFormatarCompetencia(venc.slice(0, 7) + '-01') + '</td><td>' + malotFormatarDataSimples(venc) + '</td><td>' +
+          malotFormatarReais(valor) + '</td><td>' + situacao + '</td><td>' + acao + '</td></tr>');
+      }
+      tbody.innerHTML = linhas.join('');
+      wrap.style.display = 'block';
+      rodape.style.display = 'block';
+      tbody.querySelectorAll('[data-pagar-mensalidade]').forEach(function(btn){
+        btn.addEventListener('click', function(){ iniciarPagamentoCartao(this); });
+      });
+    }
+
+    async function carregarPagamentos(condominioId, ctx){
       var r = await malote.from('pagamentos_assinatura').select('*').eq('condominio_id', condominioId).order('competencia', { ascending: false }).limit(24);
       var wrap = document.getElementById('pagamentos-tabela-wrap');
       var vazio = document.getElementById('pagamentos-vazio');
       var tbody = document.getElementById('pagamentos-tbody');
       document.getElementById('painel-pagamentos').style.display = 'block';
+      if (ctx) renderMensalidades(r.error ? [] : r.data, ctx);
 
       if (r.error || !r.data || !r.data.length){
         wrap.style.display = 'none';
