@@ -179,17 +179,30 @@
                 <label for="hist-data-ate">Até</label>
                 <input type="date" id="hist-data-ate">
               </div>
+              <button type="button" class="btn btn-outline btn-sm" id="hist-hoje">Hoje</button>
               <button type="button" class="btn btn-outline btn-sm" id="hist-limpar-filtros">Limpar filtros</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:14px;">
               <button type="button" class="btn btn-primary btn-sm" id="hist-imprimir">Imprimir relatório</button>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="checkbox" id="hist-incluir-assinaturas" checked> Incluir as assinaturas de quem retirou</label>
             </div>
             <p class="hint" id="historico-resumo" style="display:none;"></p>
             <p class="hint" id="historico-vazio" style="display:none;margin-bottom:0;">Nenhuma encomenda nesse período.</p>
             <div class="table-wrap" id="historico-tabela-wrap" style="display:none;">
               <table>
-                <thead><tr><th>Morador</th><th>Chegou em</th><th>Recebido por (portaria)</th><th>Status</th><th>Retirado em</th><th>Retirado por</th><th>Entregue por (portaria)</th></tr></thead>
+                <thead><tr><th>Morador</th><th>Chegou em</th><th>Recebido por (portaria)</th><th>Status</th><th>Retirado em</th><th>Retirado por</th><th>Assinatura</th><th>Entregue por (portaria)</th></tr></thead>
                 <tbody id="historico-tbody"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <div id="modal-assinatura" class="malote-modal-backdrop" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="modal-assinatura-titulo">
+          <div class="malote-modal" style="max-width:460px;">
+            <h3 id="modal-assinatura-titulo">Assinatura de retirada</h3>
+            <div id="modal-assinatura-corpo" style="margin-bottom:14px;font-size:13.5px;line-height:1.55;"></div>
+            <div id="modal-assinatura-img" style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px;text-align:center;min-height:90px;"></div>
+            <div class="actions" style="margin-top:14px;"><button type="button" class="btn btn-primary" id="modal-assinatura-fechar">Fechar</button></div>
           </div>
         </div>
 
@@ -802,9 +815,56 @@
           '<td>' + statusBadge + '</td>' +
           '<td>' + (e.retirado_em ? esc(histDataHora(e.retirado_em)) : '—') + '</td>' +
           '<td>' + (esc(e.retirado_por) || '—') + '</td>' +
+          '<td>' + (e.retirado_em ? '<button type="button" class="btn btn-outline btn-sm" data-ver-assinatura="' + esc(e.id) + '">Ver</button>' : '—') + '</td>' +
           '<td>' + (e.retirado_em ? (esc(histOperadorEntregou(e)) || '—') : '—') + '</td></tr>';
       }).join('');
+      document.querySelectorAll('#historico-tbody [data-ver-assinatura]').forEach(function(btn){
+        btn.addEventListener('click', function(){ abrirAssinatura(this.getAttribute('data-ver-assinatura'), this); });
+      });
     }
+
+    // A assinatura (imagem) é pesada, então não vem junto com a lista: é
+    // buscada só quando o síndico clica em "Ver" ou manda imprimir com
+    // assinaturas. Só aceita imagem PNG em base64 gravada pelo próprio app.
+    function assinaturaSegura(valor){
+      return (typeof valor === 'string' && valor.indexOf('data:image/png;base64,') === 0 && /^[A-Za-z0-9+\/=]+$/.test(valor.slice(22))) ? valor : null;
+    }
+    async function buscarAssinaturas(ids){
+      var mapa = {};
+      for (var i = 0; i < ids.length; i += 20){
+        var lote = ids.slice(i, i + 20);
+        var r = await malote.from('encomendas').select('id, retirado_assinatura').eq('condominio_id', meuCondominioId).in('id', lote);
+        if (r.error) throw r.error;
+        (r.data || []).forEach(function(x){ mapa[x.id] = assinaturaSegura(x.retirado_assinatura); });
+      }
+      return mapa;
+    }
+    async function abrirAssinatura(id, btn){
+      var e = historicoLinhas.filter(function(x){ return x.id === id; })[0];
+      if (!e) return;
+      var textoBtn = btn ? btn.textContent : '';
+      if (btn){ btn.disabled = true; btn.textContent = '...'; }
+      try {
+        var mapa = await buscarAssinaturas([id]);
+        var img = mapa[id];
+        document.getElementById('modal-assinatura-corpo').innerHTML =
+          '<div><b>Destinatário:</b> ' + esc(histLocal(e)) + '</div>' +
+          '<div><b>Retirado por:</b> ' + (esc(e.retirado_por) || '—') + '</div>' +
+          '<div><b>Retirado em:</b> ' + esc(histDataHora(e.retirado_em)) + '</div>' +
+          '<div><b>Recebido na portaria por:</b> ' + (esc(histOperadorRecebeu(e)) || '—') + ' em ' + esc(histDataHora(e.criado_em)) + '</div>' +
+          '<div><b>Entregue por:</b> ' + (esc(histOperadorEntregou(e)) || '—') + '</div>';
+        document.getElementById('modal-assinatura-img').innerHTML = img
+          ? '<img src="' + img + '" alt="Assinatura de quem retirou" style="max-width:100%;max-height:220px;">'
+          : '<span class="hint" style="margin:0;">Esta retirada não tem assinatura registrada.</span>';
+        document.getElementById('modal-assinatura').style.display = 'flex';
+      } catch (err) {
+        malotToast('Não consegui carregar a assinatura. Tente de novo.', 'erro');
+      } finally {
+        if (btn){ btn.disabled = false; btn.textContent = textoBtn; }
+      }
+    }
+    document.getElementById('modal-assinatura-fechar').addEventListener('click', function(){ document.getElementById('modal-assinatura').style.display = 'none'; });
+    document.getElementById('modal-assinatura').addEventListener('click', function(ev){ if (ev.target === this) this.style.display = 'none'; });
 
     function histAtualizarListaPorteiros(){
       var sel = document.getElementById('hist-filtro-porteiro');
@@ -827,7 +887,7 @@
       if (!meuCondominioId) return;
 
       var q = malote.from('encomendas')
-        .select('codigo, remetente, bloco, apto, nome_avulso, criado_em, retirado_em, retirado_por, registrado_por_nome, registrado_por_cargo, entregue_por_nome, entregue_por_cargo')
+        .select('id, codigo, remetente, bloco, apto, nome_avulso, criado_em, retirado_em, retirado_por, registrado_por_nome, registrado_por_cargo, entregue_por_nome, entregue_por_cargo')
         .eq('condominio_id', meuCondominioId)
         .order('criado_em', { ascending: false })
         .limit(1000);
@@ -863,6 +923,13 @@
         histAplicarFiltros();
       });
     });
+    document.getElementById('hist-hoje').addEventListener('click', async function(){
+      var d = new Date();
+      var hoje = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      document.getElementById('hist-data-de').value = hoje;
+      document.getElementById('hist-data-ate').value = hoje;
+      histAplicarFiltros();
+    });
     document.getElementById('hist-limpar-filtros').addEventListener('click', function(){
       document.getElementById('hist-filtro-porteiro').value = '';
       document.getElementById('hist-data-de').value = '';
@@ -872,8 +939,10 @@
 
     // Relatório formal (A4, paisagem) para imprimir ou salvar em PDF, com campo
     // de assinatura do responsável pela portaria e do síndico.
-    document.getElementById('hist-imprimir').addEventListener('click', function(){
+    document.getElementById('hist-imprimir').addEventListener('click', async function(){
       if (!historicoVisiveis.length){ alert('Não há encomendas para imprimir com esses filtros.'); return; }
+      var btnImp = this;
+      var comAssinaturas = document.getElementById('hist-incluir-assinaturas').checked;
       var porteiro = document.getElementById('hist-filtro-porteiro').value;
       var de = document.getElementById('hist-data-de').value;
       var ate = document.getElementById('hist-data-ate').value;
@@ -885,35 +954,79 @@
       } else {
         periodoTxt = 'todo o período';
       }
-      var entregues = historicoVisiveis.filter(function(e){ return !!e.retirado_em; }).length;
-      var linhas = historicoVisiveis.slice().sort(function(a, b){ return new Date(a.criado_em) - new Date(b.criado_em); }).map(function(e, i){
-        return '<tr><td>' + (i + 1) + '</td><td>' + esc(e.codigo || '—') + '</td><td>' + esc(histLocal(e)) + '</td><td>' + esc(e.remetente || '—') + '</td>' +
+
+      // Abre a janela já no clique (senão o navegador bloqueia o pop-up
+      // depois da espera pelas assinaturas).
+      var w = window.open('', '_blank');
+      if (!w){ alert('O navegador bloqueou a janela do relatório. Permita pop-ups para este site e tente de novo.'); return; }
+      w.document.write('<p style="font-family:Arial;padding:20px;">Montando o relatório...</p>');
+
+      var de0 = histInicioDia(de), ate0 = histFimDia(ate);
+      var dentro = function(iso){
+        if (!iso) return false;
+        var t = new Date(iso);
+        return (!de0 || t >= de0) && (!ate0 || t <= ate0);
+      };
+      var porteiroOk = function(e){ return !porteiro || histOperadorRecebeu(e) === porteiro || histOperadorEntregou(e) === porteiro; };
+      // Retiradas: as que foram entregues dentro do período escolhido.
+      var retiradas = historicoLinhas.filter(function(e){
+        return e.retirado_em && porteiroOk(e) && ((!de0 && !ate0) || dentro(e.retirado_em));
+      }).sort(function(a, b){ return new Date(a.retirado_em) - new Date(b.retirado_em); });
+      // Ainda não retiradas: todas as que estão aguardando agora (o síndico
+      // quer saber o que está parado, independente do dia em que chegou).
+      var pendentes = historicoLinhas.filter(function(e){
+        return !e.retirado_em && (!porteiro || histOperadorRecebeu(e) === porteiro);
+      }).sort(function(a, b){ return new Date(a.criado_em) - new Date(b.criado_em); });
+
+      var assinaturas = {};
+      if (comAssinaturas && retiradas.length){
+        try { assinaturas = await buscarAssinaturas(retiradas.map(function(e){ return e.id; })); }
+        catch (err) { w.close(); alert('Não consegui carregar as assinaturas. Tente de novo.'); return; }
+      }
+
+      var linhasRet = retiradas.map(function(e, i){
+        var img = assinaturas[e.id];
+        var celAss = comAssinaturas
+          ? '<td class="cass">' + (img ? '<img src="' + img + '" alt="Assinatura">' : '<span class="sem">sem assinatura</span>') + '</td>'
+          : '';
+        return '<tr><td>' + (i + 1) + '</td><td>' + esc(e.codigo || '—') + '</td><td>' + esc(histLocal(e)) + '</td>' +
           '<td>' + esc(histDataHora(e.criado_em)) + '</td><td>' + (esc(histOperadorRecebeu(e)) || '—') + '</td>' +
-          '<td>' + (e.retirado_em ? esc(histDataHora(e.retirado_em)) : 'Aguardando') + '</td>' +
-          '<td>' + (e.retirado_em ? (esc(e.retirado_por) || '—') : '—') + '</td>' +
-          '<td>' + (e.retirado_em ? (esc(histOperadorEntregou(e)) || '—') : '—') + '</td></tr>';
+          '<td>' + esc(histDataHora(e.retirado_em)) + '</td><td>' + (esc(e.retirado_por) || '—') + '</td>' +
+          '<td>' + (esc(histOperadorEntregou(e)) || '—') + '</td>' + celAss + '</tr>';
       }).join('');
+      var linhasPend = pendentes.map(function(e, i){
+        var diasEsp = Math.max(0, Math.floor((Date.now() - new Date(e.criado_em).getTime()) / 86400000));
+        return '<tr><td>' + (i + 1) + '</td><td>' + esc(e.codigo || '—') + '</td><td>' + esc(histLocal(e)) + '</td>' +
+          '<td>' + esc(e.remetente || '—') + '</td><td>' + esc(histDataHora(e.criado_em)) + '</td>' +
+          '<td>' + (esc(histOperadorRecebeu(e)) || '—') + '</td><td>' + diasEsp + ' dia' + (diasEsp === 1 ? '' : 's') + '</td></tr>';
+      }).join('');
+
       var emitido = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       var doc =
         '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório da portaria — ' + esc(nomeCondominioAtual) + '</title>' +
         '<style>@page{size:A4 landscape;margin:14mm}body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px;margin:0}' +
-        'h1{font-size:18px;margin:0 0 2px}.sub{color:#444;margin:0 0 12px}.meta{display:flex;flex-wrap:wrap;gap:6px 28px;margin-bottom:12px;font-size:11px}' +
-        'table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eee}' +
-        'tr{page-break-inside:avoid}.ass{display:flex;gap:60px;margin-top:46px}.ass div{flex:1;border-top:1px solid #111;padding-top:4px;text-align:center}' +
+        'h1{font-size:18px;margin:0 0 2px}h2{font-size:13px;margin:18px 0 6px}.sub{color:#444;margin:0 0 12px}.meta{display:flex;flex-wrap:wrap;gap:6px 28px;margin-bottom:12px;font-size:11px}' +
+        'table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:middle}th{background:#eee}' +
+        'tr{page-break-inside:avoid}.cass{width:150px;text-align:center}.cass img{max-width:140px;max-height:48px;display:block;margin:0 auto}.sem{color:#888;font-size:9px}' +
+        '.vazio{color:#666;margin:4px 0}.ass{display:flex;gap:60px;margin-top:46px;page-break-inside:avoid}.ass div{flex:1;border-top:1px solid #111;padding-top:4px;text-align:center}' +
         '.rod{margin-top:14px;color:#666;font-size:9px}</style></head><body>' +
         '<h1>Relatório de movimentação da portaria</h1><p class="sub">' + esc(nomeCondominioAtual) + '</p>' +
-        '<div class="meta"><span><b>Período:</b> ' + esc(periodoTxt) + '</span>' +
+        '<div class="meta"><span><b>Período das retiradas:</b> ' + esc(periodoTxt) + '</span>' +
         '<span><b>Porteiro / recepção:</b> ' + esc(porteiro || 'Todos') + '</span>' +
-        '<span><b>Total:</b> ' + historicoVisiveis.length + ' encomenda(s)</span>' +
-        '<span><b>Entregues:</b> ' + entregues + '</span>' +
-        '<span><b>Aguardando retirada:</b> ' + (historicoVisiveis.length - entregues) + '</span>' +
+        '<span><b>Retiradas:</b> ' + retiradas.length + '</span>' +
+        '<span><b>Ainda não retiradas:</b> ' + pendentes.length + '</span>' +
         '<span><b>Emitido em:</b> ' + esc(emitido) + '</span></div>' +
-        '<table><thead><tr><th>#</th><th>Código</th><th>Destinatário</th><th>Remetente</th><th>Chegou em</th><th>Recebido por</th><th>Retirado em</th><th>Retirado por</th><th>Entregue por</th></tr></thead><tbody>' + linhas + '</tbody></table>' +
+        '<h2>Encomendas retiradas' + (comAssinaturas ? ' (com assinatura de quem retirou)' : '') + '</h2>' +
+        (retiradas.length
+          ? '<table><thead><tr><th>#</th><th>Código</th><th>Destinatário</th><th>Chegou em</th><th>Recebido por</th><th>Retirado em</th><th>Retirado por</th><th>Entregue por</th>' + (comAssinaturas ? '<th>Assinatura</th>' : '') + '</tr></thead><tbody>' + linhasRet + '</tbody></table>'
+          : '<p class="vazio">Nenhuma encomenda foi retirada nesse período.</p>') +
+        '<h2>Ainda não retiradas (aguardando na portaria)</h2>' +
+        (pendentes.length
+          ? '<table><thead><tr><th>#</th><th>Código</th><th>Destinatário</th><th>Remetente</th><th>Chegou em</th><th>Recebido por</th><th>Esperando há</th></tr></thead><tbody>' + linhasPend + '</tbody></table>'
+          : '<p class="vazio">Nenhuma encomenda aguardando retirada.</p>') +
         '<div class="ass"><div>Responsável pela portaria</div><div>Síndico / Administração</div></div>' +
-        '<p class="rod">Os nomes de quem recebeu e de quem entregou são registrados automaticamente pelo sistema Malote, a partir do login de cada pessoa.</p>' +
-        '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body></html>';
-      var w = window.open('', '_blank');
-      if (!w){ alert('O navegador bloqueou a janela do relatório. Permita pop-ups para este site e tente de novo.'); return; }
+        '<p class="rod">Os nomes de quem recebeu e de quem entregou são registrados automaticamente pelo sistema Malote, a partir do login de cada pessoa. As assinaturas são as colhidas na tela no momento da retirada.</p>' +
+        '<script>window.onload=function(){var imgs=[].slice.call(document.images);var pend=imgs.filter(function(i){return !i.complete;}).length;var go=function(){setTimeout(function(){window.print();},300);};if(!pend){go();return;}var n=pend;imgs.forEach(function(i){if(!i.complete){i.onload=i.onerror=function(){if(--n===0)go();};}});};<\/script></body></html>';
       w.document.open(); w.document.write(doc); w.document.close();
     });
 
