@@ -286,6 +286,7 @@
   <span class="mark"><img id="topbar-logo" src="icons/icon-192.png" alt=""></span>
   <span class="names"><span class="word">Malote</span><span class="sub" id="topbar-sub">leitor de etiqueta (câmera)</span></span>
   <button type="button" id="topbar-voltar" class="topbar-link" data-action="voltar-painel" style="display:none;">Painel do Administrador</button>
+  <button type="button" id="topbar-senha" class="topbar-link" data-action="alterar-senha" style="display:none;">Alterar senha</button>
   <button type="button" id="topbar-sair" class="topbar-link" data-action="sair-leitor" style="display:none;">Sair</button>
 </div>
 <div id="app"></div>
@@ -1709,6 +1710,8 @@
     if (condominioAtual) malotAtualizarLogo('topbar-logo', condominioAtual.nome, condominioAtual.fotoPerfilPath, { imgClass: '', avatarClass: 'mark-iniciais' });
     var sairBtn = document.getElementById('topbar-sair');
     if (sairBtn) sairBtn.style.display = 'inline-flex';
+    var senhaBtn = document.getElementById('topbar-senha');
+    if (senhaBtn) senhaBtn.style.display = 'inline-flex';
     // O login manda o dono da conta direto pra cá (uso do dia a dia é ler
     // etiqueta), então o botão "Voltar" pro painel de gestão (síndico ou
     // empresa) fica sempre visível — sem ele, quem precisa editar dados do
@@ -2163,6 +2166,7 @@
     if (!btn) return;
     var action = btn.getAttribute('data-action');
 
+    if (action === 'alterar-senha'){ malotAbrirAlterarSenha(); return; }
     if (action === 'sair-leitor'){
       if (realtimeChannel){ malote.removeChannel(realtimeChannel); realtimeChannel = null; }
       await malote.auth.signOut();

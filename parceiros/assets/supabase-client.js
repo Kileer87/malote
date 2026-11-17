@@ -166,6 +166,63 @@ function malotFormatarCompetencia(dateStr){
   return (meses[mi] || partes[1]) + '/' + partes[0];
 }
 
+// Alterar a própria senha estando logado (síndico, empresa, portaria...).
+// Confere a senha atual antes de trocar, pra ninguém mexer numa sessão aberta
+// no celular de outra pessoa. Abre um modal próprio (não depende da página).
+function malotAbrirAlterarSenha(){
+  if (document.getElementById('malote-modal-senha')) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'malote-modal-senha';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(14,27,51,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+  var campo = function(id, rotulo, dica){
+    return '<div class="field" style="margin-bottom:12px;"><label for="' + id + '">' + rotulo + '</label>' +
+      '<div class="campo-senha"><input type="password" id="' + id + '" autocomplete="' + (id === 'ms-atual' ? 'current-password' : 'new-password') + '"' + (dica ? ' placeholder="' + dica + '"' : '') + '>' +
+      '<button type="button" class="btn-toggle-senha" data-toggle-senha="' + id + '" aria-label="Mostrar ou ocultar senha">' + ICON_OLHO_ABERTO + '</button></div></div>';
+  };
+  wrap.innerHTML =
+    '<div style="background:var(--paper,#fff);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.25);padding:22px;max-width:400px;width:100%;max-height:92vh;overflow:auto;">' +
+      '<h3 style="margin:0 0 6px;font-size:18px;">Alterar minha senha</h3>' +
+      '<p style="margin:0 0 16px;font-size:13.5px;color:var(--ink-muted,#555);line-height:1.5;">Digite a senha de agora e escolha uma nova. Use pelo menos 6 caracteres e evite sequências fáceis, como 123456 ou 000000.</p>' +
+      campo('ms-atual', 'Senha atual') + campo('ms-nova', 'Nova senha', 'Mínimo 6 caracteres') + campo('ms-confirmar', 'Confirmar nova senha') +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">' +
+        '<button type="button" class="btn btn-outline" id="ms-cancelar">Cancelar</button>' +
+        '<button type="button" class="btn btn-primary" id="ms-salvar">Salvar nova senha</button>' +
+      '</div></div>';
+  document.body.appendChild(wrap);
+  var fechar = function(){ if (wrap.parentNode) wrap.parentNode.removeChild(wrap); };
+  wrap.addEventListener('click', function(ev){ if (ev.target === wrap) fechar(); });
+  document.getElementById('ms-cancelar').addEventListener('click', fechar);
+  document.getElementById('ms-atual').focus();
+  document.getElementById('ms-salvar').addEventListener('click', async function(){
+    var atual = document.getElementById('ms-atual').value;
+    var nova = document.getElementById('ms-nova').value;
+    var conf = document.getElementById('ms-confirmar').value;
+    if (!atual){ malotToast('Digite a sua senha atual.', 'erro'); return; }
+    if (!nova || nova.length < 6){ malotToast('A nova senha precisa ter pelo menos 6 caracteres.', 'erro'); return; }
+    if (/^(.)\1+$/.test(nova) || nova === '123456' || nova === '1234567' || nova === '12345678'){ malotToast('Essa senha é fácil demais. Escolha outra.', 'erro'); return; }
+    if (nova === atual){ malotToast('A nova senha precisa ser diferente da atual.', 'erro'); return; }
+    if (nova !== conf){ malotToast('As senhas novas digitadas são diferentes.', 'erro'); return; }
+    var btn = this; btn.disabled = true; btn.textContent = 'Salvando...';
+    try {
+      var sessao = await malotSessao();
+      var email = sessao && sessao.user ? sessao.user.email : null;
+      if (!email){ malotToast('Sua sessão expirou. Entre de novo para trocar a senha.', 'erro'); return; }
+      var conferir = await window.malote.auth.signInWithPassword({ email: email, password: atual });
+      if (conferir.error){ malotToast('A senha atual está incorreta.', 'erro'); return; }
+      var r = await window.malote.auth.updateUser({ password: nova });
+      if (r.error) throw r.error;
+      malotToast('Senha alterada com sucesso!', 'ok');
+      fechar();
+    } catch (err) {
+      malotToast(malotErroMsg(err), 'erro');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Salvar nova senha';
+    }
+  });
+}
+
 async function malotSair(){
   await window.malote.auth.signOut();
   // Caminho absoluto: essa função é compartilhada por páginas em pastas
