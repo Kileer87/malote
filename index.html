@@ -530,21 +530,94 @@
     }
     return null;
   }
+  function semAcento(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  // Lê a etiqueta combinando APARTAMENTO + PRIMEIRO NOME:
+  //  - apartamento igual ao lido: 3 pontos (confere o bloco só se os dois tiverem)
+  //  - primeiro nome aparece na etiqueta: 2 pontos
+  //  - outro pedaço do nome (sobrenome): 1 ponto
+  // Quem tiver a maior pontuação (sozinho) é o sugerido. Se o apartamento foi
+  // lido mas tem mais de um morador e a etiqueta não diz qual, devolve a lista
+  // (candidates) pra pessoa só tocar no nome certo.
   function guessFromText(text){
-    var norm = text.toUpperCase();
+    var norm = semAcento(text).toUpperCase();
     var bloco = matchFirst(norm, [/BLOCO\.?\s*[:\-]?\s*([A-Z0-9]{1,20})/, /\bBL\.?\s*[:\-]?\s*([A-Z0-9]{1,20})\b/, /TORRE\.?\s*[:\-]?\s*([A-Z0-9]{1,20})/]);
     var apto = matchFirst(norm, [/APTO?\.?\s*[:\-]?\s*([A-Z0-9]{1,5})/, /\bAP\.?\s*[:\-]?\s*([A-Z0-9]{1,5})\b/, /UNID(?:ADE)?\.?\s*[:\-]?\s*([A-Z0-9]{1,5})/]);
-    var residentMatch = null;
-    if (bloco && apto){
-      residentMatch = residents.filter(function(r){ return normKey(r.bloco)===normKey(bloco) && normKey(r.apto)===normKey(apto); })[0] || null;
+    var palavras = {};
+    norm.split(/[^A-Z0-9]+/).forEach(function(w){ if (w) palavras[w] = true; });
+    var temPalavra = function(w){ return !!palavras[w] || (w.length >= 5 && norm.indexOf(w) !== -1); };
+    var mesmoApto = function(r){
+      if (!apto || normKey(apto) !== normKey(r.apto)) return false;
+      return !bloco || !r.bloco || normKey(bloco) === normKey(r.bloco);
+    };
+    var pontuados = residents.map(function(r){
+      var pts = 0;
+      if (mesmoApto(r)) pts += 3;
+      var nomes = semAcento(r.nome).toUpperCase().split(/\s+/).filter(function(w){ return w.length > 2; });
+      if (nomes.length){
+        if (temPalavra(nomes[0])) pts += 2;
+        else if (nomes.slice(1).some(function(w){ return w.length >= 4 && temPalavra(w); })) pts += 1;
+        if (pts > 0 && pts < 3 && nomes.slice(1).some(function(w){ return w.length >= 4 && temPalavra(w); }) && temPalavra(nomes[0])) pts += 1;
+      }
+      return { r: r, p: pts };
+    }).filter(function(x){ return x.p > 0; });
+    var max = pontuados.reduce(function(m, x){ return Math.max(m, x.p); }, 0);
+    var topo = pontuados.filter(function(x){ return x.p === max; }).map(function(x){ return x.r; });
+    return {
+      bloco: bloco, apto: apto,
+      residentMatch: topo.length === 1 ? topo[0] : null,
+      candidates: (topo.length >= 2 && topo.length <= 6) ? topo : []
+    };
+  }
+
+  // Busca pelo nome (qualquer parte, sem acento) ou pelo apartamento. Digitar
+  // o apartamento mostra todos os moradores dele.
+  function buscarResidentes(consulta){
+    var tokens = semAcento(consulta).toUpperCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    return sortedResidents().filter(function(r){
+      var apto = normKey(semAcento(r.apto)), bloco = normKey(semAcento(r.bloco));
+      var nomes = semAcento(r.nome).toUpperCase().split(/\s+/).filter(Boolean);
+      return tokens.every(function(t){
+        if (apto.indexOf(t) === 0 || (bloco && bloco === t)) return true;
+        return nomes.some(function(w){ return w.indexOf(t) === 0; });
+      });
+    }).slice(0, 12);
+  }
+  function rotuloLocalResidente(r){
+    return modoEmpresarial()
+      ? ((r.bloco ? r.bloco + ', ' : '') + r.apto)
+      : ((r.bloco ? 'Bloco ' + r.bloco + ', ' : '') + 'Apto ' + r.apto);
+  }
+  // modo: 'scan' (leitor) ou 'ident' (fila "aguardando identificação")
+  function acaoEscolher(modo){ return modo === 'ident' ? 'ident-pick-resident' : 'pick-resident'; }
+  function htmlMoradorSelecionado(r, veioDaLeitura, modo){
+    var html = '<div class="suggest"><div class="txt"><strong>' + (veioDaLeitura ? 'Encontramos' : 'Selecionado') + ': ' + esc(rotuloLocalResidente(r)) + ' — ' + esc(r.nome) + '</strong>' +
+      '<span>' + (modo === 'ident' ? 'Confira antes de confirmar.' : 'Confira antes de enviar a mensagem.') + '</span></div>';
+    html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="' + (modo === 'ident' ? 'ident-use-manual' : 'use-manual') + '">Não é esse, escolher outro</button></div></div>';
+    var outros = residents.filter(function(x){ return x.id !== r.id && normKey(x.apto) === normKey(r.apto) && normKey(x.bloco) === normKey(r.bloco); });
+    if (outros.length){
+      html += '<div class="hint" style="margin-top:10px;">' + (modoEmpresarial() ? 'Outros colaboradores deste setor:' : 'Outros moradores deste apartamento:') + '</div><div class="chips">';
+      outros.forEach(function(o){
+        html += '<button type="button" class="chip" data-action="' + acaoEscolher(modo) + '" data-id="' + esc(o.id) + '">' + esc(o.nome) + '</button>';
+      });
+      html += '</div>';
     }
-    if (!residentMatch){
-      residentMatch = residents.filter(function(r){
-        var parts = r.nome.toUpperCase().split(/\s+/).filter(function(w){ return w.length > 2; });
-        return parts.some(function(w){ return norm.indexOf(w) !== -1; });
-      })[0] || null;
-    }
-    return { bloco: bloco, apto: apto, residentMatch: residentMatch };
+    return html;
+  }
+  function htmlCandidatos(g, modo){
+    if (!g || g.residentMatch || !g.candidates || g.candidates.length < 2) return '';
+    var html = '<div class="suggest" style="display:block;"><div class="txt"><strong>' +
+      (g.apto ? 'Encontramos o ' + esc(modoEmpresarial() ? '' : 'Apto ') + esc(g.apto) + '. ' : '') + 'Quem é ' + (modoEmpresarial() ? 'o colaborador' : 'o morador') + '?</strong>' +
+      '<span>Toque no nome certo.</span></div><div class="chips" style="margin-top:10px;">';
+    g.candidates.forEach(function(c){
+      html += '<button type="button" class="chip" data-action="' + acaoEscolher(modo) + '" data-id="' + esc(c.id) + '">' + esc(c.nome) + ' · ' + esc(rotuloLocalResidente(c)) + '</button>';
+    });
+    return html + '</div></div>';
+  }
+  function htmlBuscaMorador(modo){
+    return '<div class="field" style="margin-top:14px;"><label>' + (modoEmpresarial() ? 'Buscar colaborador (nome ou setor)' : 'Buscar morador (nome ou apartamento)') + '</label>' +
+      '<input type="text" data-busca-morador="' + modo + '" placeholder="' + (modoEmpresarial() ? 'Ex: Maria' : 'Ex: 304 ou Ana') + '" autocomplete="off">' +
+      '<div class="chips" data-busca-resultados="' + modo + '" style="flex-direction:column;align-items:stretch;gap:6px;"></div></div>';
   }
 
   async function runOcr(dataUrl){
@@ -851,14 +924,12 @@
         html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="ident-retake-photo">&larr; Cancelar</button></div>';
       }
       var labelSel = modoEmpresarial() ? 'Colaborador' : 'Morador';
-      if (identGuess && identGuess.residentMatch && !identManualMode){
-        var rIdent = identGuess.residentMatch;
-        var localSuggestIdent = modoEmpresarial()
-          ? ((rIdent.bloco ? esc(rIdent.bloco) + ', ' : '') + esc(rIdent.apto))
-          : ((rIdent.bloco ? 'Bloco ' + esc(rIdent.bloco) + ', ' : '') + 'Apto ' + esc(rIdent.apto));
-        html += '<div class="suggest"><div class="txt"><strong>Encontramos: ' + localSuggestIdent + ' — ' + esc(rIdent.nome) + '</strong><span>Confira antes de confirmar.</span></div>';
-        html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="ident-use-manual">Não é esse, escolher outro</button></div></div>';
+      var rSelIdent = (!identManualMode && identChosenResidentId) ? findResident(identChosenResidentId) : null;
+      if (rSelIdent){
+        html += htmlMoradorSelecionado(rSelIdent, !!(identGuess && identGuess.residentMatch && identGuess.residentMatch.id === rSelIdent.id), 'ident');
       } else {
+        html += htmlCandidatos(identGuess, 'ident');
+        html += htmlBuscaMorador('ident');
         html += '<div class="field" style="margin-top:0;"><label>' + labelSel + '</label><select data-action="ident-resident-select">';
         html += '<option value="">' + (modoEmpresarial() ? 'Selecione unidade / setor / nome...' : 'Selecione bloco / apto / nome...') + '</option>';
         sortedResidents().forEach(function(r){
@@ -974,14 +1045,12 @@
       if (!photoDataUrl){
         html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="retake-photo">&larr; Cancelar</button></div>';
       }
-      if (guess && guess.residentMatch && !manualMode){
-        var r = guess.residentMatch;
-        var localSuggest = modoEmpresarial()
-          ? ((r.bloco ? esc(r.bloco) + ', ' : '') + esc(r.apto))
-          : ((r.bloco ? 'Bloco ' + esc(r.bloco) + ', ' : '') + 'Apto ' + esc(r.apto));
-        html += '<div class="suggest"><div class="txt"><strong>Encontramos: ' + localSuggest + ' — ' + esc(r.nome) + '</strong><span>Confira antes de enviar a mensagem.</span></div>';
-        html += '<div class="actions" style="margin-top:0;"><button type="button" class="btn btn-outline btn-sm" data-action="use-manual">Não é esse, digitar manualmente</button></div></div>';
+      var rSel = (!manualMode && chosenResidentId) ? findResident(chosenResidentId) : null;
+      if (rSel){
+        html += htmlMoradorSelecionado(rSel, !!(guess && guess.residentMatch && guess.residentMatch.id === rSel.id), 'scan');
       } else {
+        html += htmlCandidatos(guess, 'scan');
+        html += htmlBuscaMorador('scan');
         var labelSel = modoEmpresarial() ? 'Colaborador' : 'Morador';
         html += '<div class="field" style="margin-top:0;"><label>' + labelSel + '</label><select data-action="resident-select">';
         html += '<option value="">' + (modoEmpresarial() ? 'Selecione unidade / setor / nome...' : 'Selecione bloco / apto / nome...') + '</option>';
@@ -2161,6 +2230,22 @@
   }
 
   /* ---------- events ---------- */
+  document.addEventListener('input', function(e){
+    var campo = e.target.closest ? e.target.closest('[data-busca-morador]') : null;
+    if (!campo) return;
+    var modo = campo.getAttribute('data-busca-morador');
+    var alvo = document.querySelector('[data-busca-resultados="' + modo + '"]');
+    if (!alvo) return;
+    var achados = buscarResidentes(campo.value);
+    if (!campo.value.trim()){ alvo.innerHTML = ''; return; }
+    if (!achados.length){
+      alvo.innerHTML = '<div class="hint" style="margin:0;">' + (modoEmpresarial() ? 'Nenhum colaborador encontrado.' : 'Nenhum morador encontrado. Confira o nome ou o apartamento.') + '</div>';
+      return;
+    }
+    alvo.innerHTML = achados.map(function(r){
+      return '<button type="button" class="chip" style="text-align:left;" data-action="' + acaoEscolher(modo) + '" data-id="' + esc(r.id) + '">' + esc(r.nome) + ' · ' + esc(rotuloLocalResidente(r)) + '</button>';
+    }).join('');
+  });
   document.addEventListener('click', async function(e){
     var btn = e.target.closest('[data-action]');
     if (!btn) return;
@@ -2185,6 +2270,8 @@
     if (action === 'run-ocr'){ if (photoDataUrl) runOcr(photoDataUrl); return; }
     if (action === 'retake-photo'){ resetScan(); render(); return; }
     if (action === 'new-scan'){ resetScan(); lastRegisteredId = null; render(); return; }
+    if (action === 'pick-resident'){ capturarPkgFormDraft(); chosenResidentId = btn.getAttribute('data-id'); manualMode = false; render(); return; }
+    if (action === 'ident-pick-resident'){ capturarIdentFormDraft(); identChosenResidentId = btn.getAttribute('data-id'); identManualMode = false; render(); return; }
     if (action === 'use-manual'){ capturarPkgFormDraft(); manualMode = true; chosenResidentId = ''; render(); return; }
     if (action === 'manual-entry'){ resetScan(); manualMode = true; render(); return; }
     if (action === 'notify-confirm'){ return; }
