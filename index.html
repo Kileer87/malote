@@ -1559,6 +1559,25 @@
     return packages.filter(function(x){ return x.id !== pkg.id && !x.retiradoEm && chave(x) === k; })
       .sort(function(a,b){ return new Date(a.criadoEm) - new Date(b.criadoEm); });
   }
+  // Encomendas pendentes no MESMO apartamento, mas em nome de outros moradores
+  function outrasPendentesDoMesmoApartamento(pkg, jaListadas){
+    if (modoEmpresarial()) return [];
+    function localDe(x){
+      var r = x.residentId ? findResident(x.residentId) : null;
+      var bl = r ? r.bloco : x.bloco, ap = r ? r.apto : x.apto;
+      return String(bl||'').trim().toLowerCase() + '|' + String(ap||'').trim().toLowerCase();
+    }
+    var k = localDe(pkg);
+    if (k === '|') return [];
+    var ids = {}; ids[pkg.id] = true;
+    (jaListadas || []).forEach(function(x){ ids[x.id] = true; });
+    return packages.filter(function(x){ return !ids[x.id] && !x.retiradoEm && localDe(x) === k; })
+      .sort(function(a,b){ return new Date(a.criadoEm) - new Date(b.criadoEm); });
+  }
+  function nomeDoDestinatario(x){
+    var r = x.residentId ? findResident(x.residentId) : null;
+    return r ? r.nome : (x.nomeAvulso || 'sem nome');
+  }
   function renderAssinatura(){
     var pkg = packages.filter(function(x){ return x.id === signingPackageId; })[0];
     if (!pkg){ signingPackageId = null; return renderHistorico(); }
@@ -1588,6 +1607,20 @@
       html += '</div>';
     }
 
+    var doApto = outrasPendentesDoMesmoApartamento(pkg, outras);
+    if (doApto.length){
+      html += '<div class="field full"><label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">Também há ' + doApto.length + (doApto.length === 1 ? ' encomenda' : ' encomendas') + ' deste apartamento em nome de outros moradores. Se esta pessoa for retirar também, marque (a mesma assinatura vale para todas):</label>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;">' +
+        '<button type="button" class="btn btn-outline btn-sm" data-action="marcar-todas-apto">Retirar todas do apartamento</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-action="desmarcar-outras-apto">Só as dele(a)</button></div>';
+      doApto.forEach(function(o){
+        html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);">' +
+          '<input type="checkbox" data-retirada-extra="' + esc(o.id) + '" data-grupo="apto" style="margin-top:3px;width:18px;height:18px;">' +
+          '<span>' + esc(nomeDoDestinatario(o)) + ' · Código ' + esc(o.codigo) + (o.remetente ? ' · ' + esc(o.remetente) : '') + ' <span class="hint" style="margin:0;">— chegou ' + fmtWhen(o.criadoEm) + '</span></span></label>';
+      });
+      html += '</div>';
+    }
+
     html += '<div class="sig-wrap">';
     html += '<label style="display:block;font-size:12px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Assinatura (com o dedo ou o mouse)</label>';
     html += '<canvas id="sig-canvas" class="sig-pad" oncontextmenu="return false"></canvas>';
@@ -1597,7 +1630,7 @@
     html += '<div class="actions">';
     html += '<button type="button" class="btn btn-outline btn-sm" data-action="limpar-assinatura">Limpar</button>';
     html += '<button type="button" class="btn btn-outline" data-action="cancelar-assinatura">Cancelar</button>';
-    html += '<button type="button" class="btn btn-primary" data-action="confirmar-retirada" data-id="' + pkg.id + '">' + (outras.length ? 'Confirmar retirada (marcadas)' : 'Confirmar retirada') + '</button>';
+    html += '<button type="button" class="btn btn-primary" data-action="confirmar-retirada" data-id="' + pkg.id + '">' + ((outras.length || doApto.length) ? 'Confirmar retirada (marcadas)' : 'Confirmar retirada') + '</button>';
     html += '</div>';
     html += '</div>';
     return html;
@@ -2364,6 +2397,11 @@
       var vid = btn.getAttribute('data-id');
       expandedSigId = (expandedSigId === vid) ? null : vid;
       render();
+      return;
+    }
+    if (action === 'marcar-todas-apto' || action === 'desmarcar-outras-apto'){
+      var marcar = (action === 'marcar-todas-apto');
+      Array.prototype.forEach.call(document.querySelectorAll('[data-retirada-extra][data-grupo="apto"]'), function(cb){ cb.checked = marcar; });
       return;
     }
     if (action === 'limpar-assinatura'){
