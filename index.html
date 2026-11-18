@@ -1549,6 +1549,16 @@
     return html;
   }
 
+  // Outras encomendas ainda não retiradas do MESMO destinatário (para uma única assinatura valer para todas)
+  function outrasPendentesDoMesmoDestinatario(pkg){
+    function chave(x){
+      if (x.residentId) return 'r:' + x.residentId;
+      return 'a:' + String(x.bloco||'').trim().toLowerCase() + '|' + String(x.apto||'').trim().toLowerCase() + '|' + String(x.nomeAvulso||'').trim().toLowerCase();
+    }
+    var k = chave(pkg);
+    return packages.filter(function(x){ return x.id !== pkg.id && !x.retiradoEm && chave(x) === k; })
+      .sort(function(a,b){ return new Date(a.criadoEm) - new Date(b.criadoEm); });
+  }
   function renderAssinatura(){
     var pkg = packages.filter(function(x){ return x.id === signingPackageId; })[0];
     if (!pkg){ signingPackageId = null; return renderHistorico(); }
@@ -1567,6 +1577,17 @@
     html += '<div class="field"><label>Recebido por</label><input type="text" id="f-retirado-por" value="' + esc(nome || '') + '" placeholder="Nome de quem esta retirando"></div>';
     html += '<div class="field"><label>Nº do documento (RG ou CPF)</label><input type="text" id="f-retirado-documento" inputmode="text" autocomplete="off" autocapitalize="characters" maxlength="30" placeholder="Digite o número do documento de quem retira"></div>';
 
+    var outras = outrasPendentesDoMesmoDestinatario(pkg);
+    if (outras.length){
+      html += '<div class="field full"><label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);">Esta pessoa tem mais ' + outras.length + (outras.length === 1 ? ' encomenda' : ' encomendas') + ' na portaria. Marque as que estão sendo retiradas agora (uma só assinatura vale para todas):</label>';
+      outras.forEach(function(o){
+        html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);">' +
+          '<input type="checkbox" data-retirada-extra="' + esc(o.id) + '" checked style="margin-top:3px;width:18px;height:18px;">' +
+          '<span>Código ' + esc(o.codigo) + (o.remetente ? ' · ' + esc(o.remetente) : '') + ' <span class="hint" style="margin:0;">— chegou ' + fmtWhen(o.criadoEm) + '</span></span></label>';
+      });
+      html += '</div>';
+    }
+
     html += '<div class="sig-wrap">';
     html += '<label style="display:block;font-size:12px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Assinatura (com o dedo ou o mouse)</label>';
     html += '<canvas id="sig-canvas" class="sig-pad" oncontextmenu="return false"></canvas>';
@@ -1576,7 +1597,7 @@
     html += '<div class="actions">';
     html += '<button type="button" class="btn btn-outline btn-sm" data-action="limpar-assinatura">Limpar</button>';
     html += '<button type="button" class="btn btn-outline" data-action="cancelar-assinatura">Cancelar</button>';
-    html += '<button type="button" class="btn btn-primary" data-action="confirmar-retirada" data-id="' + pkg.id + '">Confirmar retirada</button>';
+    html += '<button type="button" class="btn btn-primary" data-action="confirmar-retirada" data-id="' + pkg.id + '">' + (outras.length ? 'Confirmar retirada (marcadas)' : 'Confirmar retirada') + '</button>';
     html += '</div>';
     html += '</div>';
     return html;
@@ -2360,19 +2381,30 @@
       var canvasEl = document.getElementById('sig-canvas');
       var assinaturaPng = canvasEl ? canvasEl.toDataURL('image/png') : null;
       var retiradoEmIso = new Date().toISOString();
+      // Encomendas extras marcadas (do mesmo morador): a mesma assinatura vale para todas
+      var idsLote = [idAlvo];
+      Array.prototype.forEach.call(document.querySelectorAll('[data-retirada-extra]'), function(cb){
+        var xid = cb.getAttribute('data-retirada-extra');
+        if (cb.checked && idsLote.indexOf(xid) < 0) idsLote.push(xid);
+      });
+      var pacotesLote = packages.filter(function(x){ return idsLote.indexOf(x.id) >= 0 && !x.retiradoEm; });
+      if (!pacotesLote.some(function(x){ return x.id === idAlvo; })) pacotesLote.push(pkgAlvo);
       savingRetirada = true;
       try {
         var r = await malote.from('encomendas').update({
           retirado_em: retiradoEmIso, retirado_por: nomeRecebeu, retirado_documento: documentoRet || null, retirado_assinatura: assinaturaPng
-        }).eq('id', idAlvo);
+        }).in('id', pacotesLote.map(function(x){ return x.id; }));
         if (r.error) throw r.error;
-        pkgAlvo.retiradoEm = retiradoEmIso;
-        pkgAlvo.retiradoPor = nomeRecebeu;
-        pkgAlvo.retiradoDocumento = documentoRet;
-        pkgAlvo.retiradoAssinatura = assinaturaPng;
-        var opEnt = operadorLocal(); pkgAlvo.entreguePorNome = opEnt.nome; pkgAlvo.entreguePorCargo = opEnt.cargo;
+        var opEnt = operadorLocal();
+        pacotesLote.forEach(function(px){
+          px.retiradoEm = retiradoEmIso;
+          px.retiradoPor = nomeRecebeu;
+          px.retiradoDocumento = documentoRet;
+          px.retiradoAssinatura = assinaturaPng;
+          px.entreguePorNome = opEnt.nome; px.entreguePorCargo = opEnt.cargo;
+        });
         signingPackageId = null;
-        showToast('Retirada registrada!');
+        showToast(pacotesLote.length > 1 ? 'Retirada registrada para ' + pacotesLote.length + ' encomendas!' : 'Retirada registrada!');
       } catch (err) {
         showToast('Não consegui registrar a retirada. ' + malotErroMsg(err));
       } finally {
