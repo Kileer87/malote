@@ -815,7 +815,7 @@
           '<td>' + (esc(histOperadorRecebeu(e)) || '—') + '</td>' +
           '<td>' + statusBadge + '</td>' +
           '<td>' + (e.retirado_em ? esc(histDataHora(e.retirado_em)) : '—') + '</td>' +
-          '<td>' + (esc(e.retirado_por) || '—') + '</td>' +
+          '<td>' + (esc(e.retirado_por) || '—') + (e.retirado_documento ? '<br><small>Doc. ' + esc(e.retirado_documento) + '</small>' : '') + '</td>' +
           '<td>' + (e.retirado_em ? '<button type="button" class="btn btn-outline btn-sm" data-ver-assinatura="' + esc(e.id) + '">Ver</button>' : '—') + '</td>' +
           '<td>' + (e.retirado_em ? (esc(histOperadorEntregou(e)) || '—') : '—') + '</td></tr>';
       }).join('');
@@ -851,6 +851,7 @@
         document.getElementById('modal-assinatura-corpo').innerHTML =
           '<div><b>Destinatário:</b> ' + esc(histLocal(e)) + '</div>' +
           '<div><b>Retirado por:</b> ' + (esc(e.retirado_por) || '—') + '</div>' +
+          '<div><b>Documento:</b> ' + (esc(e.retirado_documento) || 'não informado') + '</div>' +
           '<div><b>Retirado em:</b> ' + esc(histDataHora(e.retirado_em)) + '</div>' +
           '<div><b>Recebido na portaria por:</b> ' + (esc(histOperadorRecebeu(e)) || '—') + ' em ' + esc(histDataHora(e.criado_em)) + '</div>' +
           '<div><b>Entregue por:</b> ' + (esc(histOperadorEntregou(e)) || '—') + '</div>';
@@ -888,7 +889,7 @@
       if (!meuCondominioId) return;
 
       var q = malote.from('encomendas')
-        .select('id, codigo, remetente, bloco, apto, nome_avulso, criado_em, retirado_em, retirado_por, registrado_por_nome, registrado_por_cargo, entregue_por_nome, entregue_por_cargo')
+        .select('id, codigo, remetente, bloco, apto, nome_avulso, criado_em, retirado_em, retirado_por, retirado_documento, registrado_por_nome, registrado_por_cargo, entregue_por_nome, entregue_por_cargo')
         .eq('condominio_id', meuCondominioId)
         .order('criado_em', { ascending: false })
         .limit(1000);
@@ -992,7 +993,7 @@
           : '';
         return '<tr><td>' + (i + 1) + '</td><td>' + esc(e.codigo || '—') + '</td><td>' + esc(histLocal(e)) + '</td>' +
           '<td>' + esc(histDataHora(e.criado_em)) + '</td><td>' + (esc(histOperadorRecebeu(e)) || '—') + '</td>' +
-          '<td>' + esc(histDataHora(e.retirado_em)) + '</td><td>' + (esc(e.retirado_por) || '—') + '</td>' +
+          '<td>' + esc(histDataHora(e.retirado_em)) + '</td><td>' + (esc(e.retirado_por) || '—') + (e.retirado_documento ? '<br>Doc. ' + esc(e.retirado_documento) : '') + '</td>' +
           '<td>' + (esc(histOperadorEntregou(e)) || '—') + '</td>' + celAss + '</tr>';
       }).join('');
       var linhasPend = pendentes.map(function(e, i){
