@@ -390,6 +390,7 @@
   var savingMorador = false;
   var savingPacote = false;
   var savingRetirada = false;
+  var deletingEncomendaIds = {};
   var deletingResidentIds = {};
 
   var residentFotoDataUrl = null;    // dataURL da nova foto escolhida (ainda não enviada)
@@ -1665,6 +1666,11 @@
         html += '<a class="wa-btn" title="Avisar ' + esc(r?r.nome:p.nomeAvulso) + ' no WhatsApp" target="_blank" rel="noopener" href="' + waLink(telNotif, buildMessage(p)) + '">' + ICON_WHATSAPP + '</a>';
       }
       html += '<button type="button" class="btn btn-primary btn-sm" data-action="abrir-retirada" data-id="' + p.id + '">Registrar retirada</button>';
+      // Excluir (registro feito por engano / pra registrar de novo): só síndico/administração.
+      // O porteiro não tem permissão de apagar, nem no banco de dados.
+      if (!modoPorteiro){
+        html += '<button type="button" class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" data-action="excluir-encomenda" data-id="' + p.id + '">Excluir</button>';
+      }
     }
     html += '</div>';
     if (retirado && expandedSigId === p.id){
@@ -2400,6 +2406,33 @@
 
     if (action === 'filtro-retirada'){ filtroRetirada = btn.getAttribute('data-periodo'); render(); return; }
 
+    if (action === 'excluir-encomenda'){
+      if (modoPorteiro) return;
+      var excId = btn.getAttribute('data-id');
+      var excPkg = packages.filter(function(x){ return x.id === excId; })[0];
+      if (!excPkg || excPkg.retiradoEm) return;
+      var excRes = excPkg.residentId ? findResident(excPkg.residentId) : null;
+      var excNome = excRes ? excRes.nome : (excPkg.nomeAvulso || 'sem nome');
+      if (!window.confirm('Excluir a encomenda ' + (excPkg.codigo || '') + ' de ' + excNome + '?\n\nEla some da lista e do histórico e não dá para desfazer. Depois você pode registrar de novo.')) return;
+      if (deletingEncomendaIds[excId]) return;
+      deletingEncomendaIds[excId] = true;
+      try {
+        var rd = await malote.from('encomendas').delete().eq('id', excId);
+        if (rd.error) throw rd.error;
+        if (excPkg.fotoPath){
+          malote.storage.from('encomenda-fotos').remove([excPkg.fotoPath]).catch(function(){ /* melhor esforço */ });
+        }
+        packages = packages.filter(function(x){ return x.id !== excId; });
+        if (expandedSigId === excId) expandedSigId = null;
+        showToast('Encomenda excluída. Você pode registrar de novo.');
+      } catch (errD) {
+        showToast('Não consegui excluir a encomenda. ' + malotErroMsg(errD));
+      } finally {
+        delete deletingEncomendaIds[excId];
+      }
+      render();
+      return;
+    }
     if (action === 'abrir-retirada'){ signingPackageId = btn.getAttribute('data-id'); render(); return; }
     if (action === 'cancelar-assinatura'){ signingPackageId = null; render(); return; }
     if (action === 'ver-assinatura'){

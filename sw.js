@@ -1,4 +1,4 @@
-const CACHE = 'malote-leitor-v24';
+const CACHE = 'malote-leitor-v25';
 const ASSETS = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', function (event) {
