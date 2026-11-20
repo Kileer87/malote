@@ -541,17 +541,26 @@
   function guessFromText(text){
     var norm = semAcento(text).toUpperCase();
     var bloco = matchFirst(norm, [/BLOCO\.?\s*[:\-]?\s*([A-Z0-9]{1,20})/, /\bBL\.?\s*[:\-]?\s*([A-Z0-9]{1,20})\b/, /TORRE\.?\s*[:\-]?\s*([A-Z0-9]{1,20})/]);
-    var apto = matchFirst(norm, [/APTO?\.?\s*[:\-]?\s*([A-Z0-9]{1,5})/, /\bAP\.?\s*[:\-]?\s*([A-Z0-9]{1,5})\b/, /UNID(?:ADE)?\.?\s*[:\-]?\s*([A-Z0-9]{1,5})/]);
+    var apto = matchFirst(norm, [/APARTAMENTO\.?\s*[:\-]?\s*(?:N[O0]?\s*)?([A-Z0-9]{1,5})\b/, /APTO?\.?\s*[:\-]?\s*([A-Z0-9]{1,5})/, /\bAP\.?\s*[:\-]?\s*([A-Z0-9]{1,5})\b/, /UNID(?:ADE)?\.?\s*[:\-]?\s*([A-Z0-9]{1,5})/]);
+    // Leitura de OCR troca letra por número (O/0, I/1): compara o apartamento dos dois jeitos.
+    var numFix = function(v){ return normKey(v).replace(/O/g, '0').replace(/[IL]/g, '1'); };
     var palavras = {};
     norm.split(/[^A-Z0-9]+/).forEach(function(w){ if (w) palavras[w] = true; });
     var temPalavra = function(w){ return !!palavras[w] || (w.length >= 5 && norm.indexOf(w) !== -1); };
     var mesmoApto = function(r){
-      if (!apto || normKey(apto) !== normKey(r.apto)) return false;
+      if (!apto || (normKey(apto) !== normKey(r.apto) && numFix(apto) !== numFix(r.apto))) return false;
       return !bloco || !r.bloco || normKey(bloco) === normKey(r.bloco);
+    };
+    // Sem a palavra "apto" na etiqueta (só o número solto, ex.: "ANA 1102"): se o número
+    // do apartamento do morador aparece como palavra inteira, vale como pista (2 pontos).
+    var numeroSolto = function(r){
+      var a = normKey(r.apto);
+      return !apto && a.length >= 2 && /\d/.test(a) && !!palavras[a];
     };
     var pontuados = residents.map(function(r){
       var pts = 0;
       if (mesmoApto(r)) pts += 3;
+      else if (numeroSolto(r)) pts += 2;
       var nomes = semAcento(r.nome).toUpperCase().split(/\s+/).filter(function(w){ return w.length > 2; });
       if (nomes.length){
         if (temPalavra(nomes[0])) pts += 2;
