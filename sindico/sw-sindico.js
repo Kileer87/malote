@@ -3,7 +3,7 @@
 // Precisa de escopo próprio ('/sindico/') porque o service worker
 // compartilhado do portal do morador/colaborador (sw-parceiros.js) só cobre
 // '/parceiros/'.
-const CACHE = 'malote-sindico-v7';
+const CACHE = 'malote-sindico-v8';
 const ASSETS = [
   '/sindico/painel.html',
 ];

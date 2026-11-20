@@ -158,6 +158,19 @@
         </div>
 
         <div id="dash-page-historico" class="dash-page" style="display:none;">
+          <div id="painel-relatorio-mensal" class="card">
+            <h2 style="margin-bottom:4px;">Relatório mensal</h2>
+            <p class="hint">Resumo do mês para imprimir ou salvar em PDF: encomendas do mês e por semana, quem mais demorou a retirar, horário de maior movimento e desempenho de cada porteiro.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+              <div class="field" style="margin:0;">
+                <label for="relmes-mes">Mês</label>
+                <input type="month" id="relmes-mes">
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" id="relmes-imprimir">Imprimir relatório do mês (PDF)</button>
+            </div>
+            <p class="hint" style="margin-top:10px;margin-bottom:0;">Na janela que abrir, escolha <b>Salvar como PDF</b> como impressora para guardar o arquivo.</p>
+          </div>
+
           <div id="painel-historico" class="card">
             <h2 style="margin-bottom:4px;">Histórico de entregas</h2>
             <p class="hint">Todas as encomendas registradas, com quem recebeu na portaria, quem entregou ao morador e as datas. O nome do porteiro é gravado automaticamente pelo sistema, a partir do login dele, e não pode ser alterado depois.</p>
@@ -1031,6 +1044,179 @@
         '<script>window.onload=function(){var imgs=[].slice.call(document.images);var pend=imgs.filter(function(i){return !i.complete;}).length;var go=function(){setTimeout(function(){window.print();},300);};if(!pend){go();return;}var n=pend;imgs.forEach(function(i){if(!i.complete){i.onload=i.onerror=function(){if(--n===0)go();};}});};<\/script></body></html>';
       w.document.open(); w.document.write(doc); w.document.close();
     });
+
+
+    // ---------- Relatório mensal (A4 retrato) ----------
+    (function(){
+      var campoMes = document.getElementById('relmes-mes');
+      var agora = new Date();
+      campoMes.value = agora.getFullYear() + '-' + String(agora.getMonth() + 1).padStart(2, '0');
+
+      var fmtSP = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', day: 'numeric', hour: 'numeric', hourCycle: 'h23' });
+      function partesSP(iso){
+        var o = {};
+        fmtSP.formatToParts(new Date(iso)).forEach(function(x){ o[x.type] = parseInt(x.value, 10); });
+        return o; // { day, hour }
+      }
+      function duracao(ms){
+        var min = Math.round(ms / 60000);
+        if (min < 60) return min + ' min';
+        var h = ms / 3600000;
+        if (h < 48) return (Math.round(h * 10) / 10).toString().replace('.', ',') + ' h';
+        var d = Math.floor(h / 24), resto = Math.round(h - d * 24);
+        return d + ' dia' + (d === 1 ? '' : 's') + (resto ? ' e ' + resto + ' h' : '');
+      }
+      async function buscarTudo(montar){
+        var todos = [], de = 0, passo = 1000;
+        while (true){
+          var r = await montar().range(de, de + passo - 1);
+          if (r.error) throw r.error;
+          var dados = r.data || [];
+          todos = todos.concat(dados);
+          if (dados.length < passo) break;
+          de += passo;
+          if (de > 20000) break;
+        }
+        return todos;
+      }
+      var COLS = 'id, codigo, bloco, apto, nome_avulso, resident_id, criado_em, retirado_em, retirado_por, registrado_por_nome, registrado_por_cargo, entregue_por_nome, entregue_por_cargo';
+
+      document.getElementById('relmes-imprimir').addEventListener('click', async function(){
+        var valor = campoMes.value;
+        if (!valor){ alert('Escolha o mês do relatório.'); return; }
+        if (!meuCondominioId) return;
+        var w = window.open('', '_blank');
+        if (!w){ alert('O navegador bloqueou a janela do relatório. Permita pop-ups para este site e tente de novo.'); return; }
+        w.document.write('<p style="font-family:Arial;padding:20px;">Montando o relatório do mês...</p>');
+        try {
+          var ano = parseInt(valor.slice(0, 4), 10), mes = parseInt(valor.slice(5, 7), 10);
+          var proxAno = mes === 12 ? ano + 1 : ano, proxMes = mes === 12 ? 1 : mes + 1;
+          var iniIso = new Date(valor + '-01T00:00:00-03:00').toISOString();
+          var fimIso = new Date(proxAno + '-' + String(proxMes).padStart(2, '0') + '-01T00:00:00-03:00').toISOString();
+          var diasNoMes = new Date(ano, mes, 0).getDate();
+
+          var res = await Promise.all([
+            buscarTudo(function(){ return malote.from('encomendas').select(COLS).eq('condominio_id', meuCondominioId).gte('criado_em', iniIso).lt('criado_em', fimIso).order('criado_em', { ascending: true }); }),
+            buscarTudo(function(){ return malote.from('encomendas').select(COLS).eq('condominio_id', meuCondominioId).gte('retirado_em', iniIso).lt('retirado_em', fimIso).order('retirado_em', { ascending: true }); }),
+            buscarTudo(function(){ return malote.from('encomendas').select(COLS).eq('condominio_id', meuCondominioId).is('retirado_em', null).order('criado_em', { ascending: true }); }),
+            malote.from('moradores').select('id, nome').eq('condominio_id', meuCondominioId).limit(5000)
+          ]);
+          var chegadas = res[0], retiradas = res[1], pendentesTodas = res[2];
+          var nomesMor = {};
+          ((res[3] && res[3].data) || []).forEach(function(m){ nomesMor[m.id] = m.nome; });
+          var nomeDest = function(e){ return (e.resident_id && nomesMor[e.resident_id]) || e.nome_avulso || '—'; };
+          var localDest = function(e){ return (e.bloco ? 'Bloco ' + e.bloco + ', ' : '') + 'Apto ' + e.apto; };
+
+          // por semana (dias 1-7, 8-14, 15-21, 22-28, 29-fim)
+          var nSem = Math.ceil(diasNoMes / 7);
+          var semanas = [];
+          for (var i = 0; i < nSem; i++){
+            var di = i * 7 + 1, df = Math.min(di + 6, diasNoMes);
+            semanas.push({ rotulo: 'Semana ' + (i + 1) + ' (dias ' + di + ' a ' + df + ')', chegaram: 0, retiradas: 0 });
+          }
+          var idxSem = function(iso){ return Math.min(Math.floor((partesSP(iso).day - 1) / 7), nSem - 1); };
+          chegadas.forEach(function(e){ semanas[idxSem(e.criado_em)].chegaram++; });
+          retiradas.forEach(function(e){ semanas[idxSem(e.retirado_em)].retiradas++; });
+          var maxSem = Math.max(1, Math.max.apply(null, semanas.map(function(x){ return Math.max(x.chegaram, x.retiradas); })));
+
+          // horário de pico (chegadas)
+          var horas = []; for (var h = 0; h < 24; h++) horas.push(0);
+          chegadas.forEach(function(e){ horas[partesSP(e.criado_em).hour]++; });
+          var maxHora = Math.max.apply(null, horas);
+          var picos = []; horas.forEach(function(q, h2){ if (maxHora > 0 && q === maxHora) picos.push(String(h2).padStart(2, '0') + 'h às ' + String((h2 + 1) % 24).padStart(2, '0') + 'h'); });
+
+          // quem mais demorou: retiradas do mês (maior espera) e pendentes mais antigas
+          var comEspera = retiradas.map(function(e){ return { e: e, ms: new Date(e.retirado_em) - new Date(e.criado_em) }; })
+            .sort(function(a, b){ return b.ms - a.ms; });
+          var demoraram = comEspera.slice(0, 10);
+          var mediaMs = comEspera.length ? comEspera.reduce(function(t, x){ return t + x.ms; }, 0) / comEspera.length : 0;
+          var agoraMs = Date.now();
+          var paradas = pendentesTodas.slice(0, 10);
+
+          // porteiros
+          var por = {};
+          var tocar = function(nome, cargo){
+            if (!nome) nome = '(sem registro)';
+            var k = nome + '|' + (cargo || '');
+            if (!por[k]) por[k] = { nome: nome, cargo: cargo || '', recebeu: 0, entregou: 0 };
+            return por[k];
+          };
+          chegadas.forEach(function(e){ tocar(e.registrado_por_nome, e.registrado_por_cargo).recebeu++; });
+          retiradas.forEach(function(e){ if (e.entregue_por_nome) tocar(e.entregue_por_nome, e.entregue_por_cargo).entregou++; });
+          var listaPor = Object.keys(por).map(function(k){ return por[k]; }).sort(function(a, b){ return b.recebeu - a.recebeu || b.entregou - a.entregou; });
+          var totalRec = chegadas.length || 1;
+
+          var meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+          var tituloMes = meses[mes - 1] + ' de ' + ano;
+          var emitido = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          var sinal = function(n){ return n + ' encomenda' + (n === 1 ? '' : 's'); };
+
+          var htmlSem = semanas.map(function(x){
+            return '<tr><td>' + esc(x.rotulo) + '</td><td class="n">' + x.chegaram + '</td><td class="n">' + x.retiradas + '</td>' +
+              '<td><div class="barra" style="width:' + Math.round(x.chegaram / maxSem * 100) + '%"></div></td></tr>';
+          }).join('');
+          var htmlHoras = horas.map(function(q, h3){
+            var alt = maxHora ? Math.round(q / maxHora * 70) : 0;
+            return '<div class="col"><div class="q">' + (q || '') + '</div><div class="bar' + (maxHora && q === maxHora ? ' pico' : '') + '" style="height:' + Math.max(alt, q ? 2 : 0) + 'px"></div><div class="h">' + h3 + '</div></div>';
+          }).join('');
+          var htmlDem = demoraram.map(function(x, i4){
+            return '<tr><td>' + (i4 + 1) + '</td><td>' + esc(nomeDest(x.e)) + '<br><span class="peq">' + esc(localDest(x.e)) + '</span></td>' +
+              '<td>' + esc(histDataHora(x.e.criado_em)) + '</td><td>' + esc(histDataHora(x.e.retirado_em)) + '</td><td><b>' + duracao(x.ms) + '</b></td></tr>';
+          }).join('');
+          var htmlPar = paradas.map(function(e, i5){
+            return '<tr><td>' + (i5 + 1) + '</td><td>' + esc(nomeDest(e)) + '<br><span class="peq">' + esc(localDest(e)) + '</span></td>' +
+              '<td>' + esc(histDataHora(e.criado_em)) + '</td><td><b>' + duracao(agoraMs - new Date(e.criado_em).getTime()) + '</b></td></tr>';
+          }).join('');
+          var htmlPor = listaPor.map(function(x, i6){
+            return '<tr><td>' + (i6 + 1) + '</td><td>' + esc(x.nome) + (x.cargo ? '<br><span class="peq">' + esc(x.cargo) + '</span>' : '') + '</td>' +
+              '<td class="n">' + x.recebeu + '</td><td class="n">' + Math.round(x.recebeu / totalRec * 100) + '%</td><td class="n">' + x.entregou + '</td></tr>';
+          }).join('');
+
+          var doc =
+            '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório mensal — ' + esc(nomeCondominioAtual) + ' — ' + esc(tituloMes) + '</title>' +
+            '<style>@page{size:A4 portrait;margin:14mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px;margin:0}' +
+            'h1{font-size:19px;margin:0 0 2px}h2{font-size:13px;margin:20px 0 6px;border-bottom:1px solid #999;padding-bottom:3px}.sub{color:#444;margin:0 0 12px;font-size:12px}' +
+            '.cards{display:flex;gap:8px;margin:10px 0}.card{flex:1;border:1px solid #999;padding:8px;text-align:center}.card b{display:block;font-size:20px}.card span{color:#444;font-size:10px}' +
+            'table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:middle}th{background:#eee}tr{page-break-inside:avoid}td.n{text-align:center;width:70px}' +
+            '.barra{height:10px;background:#555}.peq{color:#555;font-size:9px}.vazio{color:#666;margin:4px 0}' +
+            '.horas{display:flex;align-items:flex-end;gap:2px;height:110px;border-bottom:1px solid #111;margin-top:6px}.col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}' +
+            '.bar{width:100%;background:#888}.bar.pico{background:#111}.q{font-size:8px;color:#333}.h{font-size:8px;color:#333;position:relative;top:11px;height:0}' +
+            '.sec{page-break-inside:avoid}.ass{display:flex;gap:60px;margin-top:46px;page-break-inside:avoid}.ass div{flex:1;border-top:1px solid #111;padding-top:4px;text-align:center}.rod{margin-top:14px;color:#666;font-size:9px}</style></head><body>' +
+            '<h1>Relatório mensal da portaria</h1><p class="sub">' + esc(nomeCondominioAtual) + ' — ' + esc(tituloMes) + '</p>' +
+            '<div class="cards"><div class="card"><b>' + chegadas.length + '</b><span>encomendas recebidas no mês</span></div>' +
+            '<div class="card"><b>' + retiradas.length + '</b><span>retiradas no mês</span></div>' +
+            '<div class="card"><b>' + pendentesTodas.length + '</b><span>aguardando retirada agora</span></div>' +
+            '<div class="card"><b>' + (comEspera.length ? duracao(mediaMs) : '—') + '</b><span>tempo médio até a retirada</span></div></div>' +
+            '<div class="sec"><h2>Encomendas por semana</h2>' +
+            (chegadas.length || retiradas.length
+              ? '<table><thead><tr><th>Semana</th><th>Chegaram</th><th>Retiradas</th><th>Chegadas (gráfico)</th></tr></thead><tbody>' + htmlSem + '</tbody></table>'
+              : '<p class="vazio">Nenhuma encomenda neste mês.</p>') + '</div>' +
+            '<div class="sec"><h2>Horário de maior movimento</h2>' +
+            (maxHora
+              ? '<p>Pico de chegadas: <b>' + esc(picos.join(' e ')) + '</b> (' + sinal(maxHora) + ' nesse horário ao longo do mês).</p><div class="horas">' + htmlHoras + '</div><div style="height:14px"></div>'
+              : '<p class="vazio">Sem chegadas no mês para calcular o horário de pico.</p>') + '</div>' +
+            '<div class="sec"><h2>Quem mais demorou a retirar (retiradas do mês)</h2>' +
+            (demoraram.length
+              ? '<table><thead><tr><th>#</th><th>Destinatário</th><th>Chegou em</th><th>Retirou em</th><th>Demorou</th></tr></thead><tbody>' + htmlDem + '</tbody></table>'
+              : '<p class="vazio">Nenhuma retirada neste mês.</p>') + '</div>' +
+            '<div class="sec"><h2>Ainda esperando há mais tempo (aguardando agora)</h2>' +
+            (paradas.length
+              ? '<table><thead><tr><th>#</th><th>Destinatário</th><th>Chegou em</th><th>Esperando há</th></tr></thead><tbody>' + htmlPar + '</tbody></table>'
+              : '<p class="vazio">Nenhuma encomenda aguardando retirada.</p>') + '</div>' +
+            '<div class="sec"><h2>Porteiros — quem mais recebeu encomendas</h2>' +
+            (listaPor.length
+              ? '<table><thead><tr><th>#</th><th>Porteiro / recepção</th><th>Recebeu</th><th>% do mês</th><th>Entregou</th></tr></thead><tbody>' + htmlPor + '</tbody></table>'
+              : '<p class="vazio">Sem registros neste mês.</p>') + '</div>' +
+            '<div class="ass"><div>Responsável pela portaria</div><div>Síndico / Administração</div></div>' +
+            '<p class="rod">Emitido em ' + esc(emitido) + '. Os nomes de quem recebeu e entregou são gravados automaticamente pelo sistema Malote, a partir do login de cada pessoa. Horários no fuso de Brasília. Semanas contadas por dias do mês (1–7, 8–14, 15–21, 22–28, 29 em diante).</p>' +
+            '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body></html>';
+          w.document.open(); w.document.write(doc); w.document.close();
+        } catch (err) {
+          w.close();
+          alert('Não consegui montar o relatório. ' + malotErroMsg(err));
+        }
+      });
+    })();
 
     async function carregarOcorrencias(){
       if (!meuCondominioId) return;
