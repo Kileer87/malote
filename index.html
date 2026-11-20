@@ -221,6 +221,9 @@
 
   .hist-item{ display:flex; align-items:center; gap:12px; background:var(--paper); border:1px solid var(--border); border-radius:9px; padding:10px 14px; margin-bottom:8px; font-size:13px; flex-wrap:wrap; }
   .hist-item .hwhen{ margin-left:auto; color:var(--ink-muted); font-size:12px; }
+  .hist-item .hist-meta{ margin-left:auto; display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
+  .hist-item .hist-meta .hwhen{ margin-left:0; }
+  .hist-item .hist-acoes{ flex-basis:100%; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .pill{ display:inline-flex; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; }
   .pill.notified{ background:var(--status-notified-bg); color:var(--status-notified); }
   .pill.waiting{ background:var(--status-waiting-bg); color:var(--status-waiting); }
@@ -1841,6 +1844,7 @@
     html += '<span><strong>' + esc(r?r.nome:p.nomeAvulso) + '</strong> · ' + localHtml(r?r.bloco:p.bloco, r?r.apto:p.apto) + '</span>';
     var recebidoTxt = rotuloOperador(p.registradoPorNome, p.registradoPorCargo);
     var entregueTxt = rotuloOperador(p.entreguePorNome, p.entreguePorCargo);
+    if (!retirado) html += '<div class="hist-meta">';
     if (recebidoTxt) html += '<span class="hwhen" title="Quem recebeu a encomenda na portaria">recebida por ' + esc(recebidoTxt) + '</span>';
     if (retirado && entregueTxt) html += '<span class="hwhen" title="Quem entregou a encomenda na retirada">entregue por ' + esc(entregueTxt) + '</span>';
     if (retirado){
@@ -1852,12 +1856,14 @@
       if (telNotif){
         html += '<a class="wa-btn" title="Avisar ' + esc(r?r.nome:p.nomeAvulso) + ' no WhatsApp" target="_blank" rel="noopener" href="' + waLink(telNotif, buildMessage(p)) + '">' + ICON_WHATSAPP + '</a>';
       }
-      html += '<button type="button" class="btn btn-primary btn-sm" data-action="abrir-retirada" data-id="' + p.id + '">Registrar retirada</button>';
+      html += '</div>';
+      html += '<div class="hist-acoes"><button type="button" class="btn btn-primary btn-sm" data-action="abrir-retirada" data-id="' + p.id + '">Registrar retirada</button>';
       // Excluir (registro feito por engano / pra registrar de novo): só síndico/administração.
       // O porteiro não tem permissão de apagar, nem no banco de dados.
       if (!modoPorteiro){
         html += '<button type="button" class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" data-action="excluir-encomenda" data-id="' + p.id + '">Excluir</button>';
       }
+      html += '</div>';
     }
     html += '</div>';
     if (retirado && expandedSigId === p.id){
