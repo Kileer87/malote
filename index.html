@@ -20,7 +20,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/7.0.0/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- biblioteca do Supabase guardada junto do site (v2.119.2) para o app abrir mesmo sem internet -->
+<script src="parceiros/assets/supabase-js-2.119.2.js"></script>
 <script src="parceiros/assets/supabase-client.js"></script>
 <!-- importação de moradores: planilha (SheetJS) e PDF (pdf.js, formato de módulo ES —
      mais recente do pdf.js só existe assim, então expõe em window pra o script
@@ -493,7 +494,10 @@
   var STORAGE_KEY = 'malote_leitor_dados_v1';
   function saveState(){
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ residents: residents, packages: packages, qtdBlocos: qtdBlocos, condominio: condominioAtual }));
+      // Sem as imagens das assinaturas (25 KB cada): o limite do navegador é de
+      // uns 5 MB e estourava com poucas centenas de retiradas.
+      var pacotesLeves = packages.map(function(p){ var c = {}; for (var k in p) c[k] = p[k]; c.retiradoAssinatura = null; return c; });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ residents: residents, packages: pacotesLeves, qtdBlocos: qtdBlocos, condominio: condominioAtual, modoPorteiro: modoPorteiro, porteiroAtual: porteiroAtual }));
       saveState._falhouAntes = false;
     } catch (e) {
       // Modo privado, localStorage desligado, ou espaço do navegador cheio.
@@ -513,8 +517,184 @@
       if (Array.isArray(data.packages)) packages = data.packages;
       if (typeof data.qtdBlocos === 'number' && data.qtdBlocos >= 1) qtdBlocos = data.qtdBlocos;
       if (data.condominio && data.condominio.id) condominioAtual = data.condominio;
+      if (data.modoPorteiro && data.porteiroAtual){ modoPorteiro = true; porteiroAtual = data.porteiroAtual; }
     } catch (e) { /* nada salvo ainda, ou dado corrompido — comeca vazio */ }
   }
+
+
+  /* ---------- fila offline: registrar sem internet e enviar depois ---------- */
+  var OB_DB = 'malote_outbox_v1', OB_STORE = 'itens';
+  var pendentesEnvio = 0, pendentesComErro = 0, sincronizandoOutbox = false, syncTimer = null;
+  var semRede = (typeof navigator !== 'undefined' && navigator.onLine === false);
+
+  function obAbrir(){
+    return new Promise(function(resolve, reject){
+      if (!window.indexedDB){ reject(new Error('IndexedDB indisponível')); return; }
+      var rq = indexedDB.open(OB_DB, 1);
+      rq.onupgradeneeded = function(){ rq.result.createObjectStore(OB_STORE, { keyPath: 'qid', autoIncrement: true }); };
+      rq.onsuccess = function(){ resolve(rq.result); };
+      rq.onerror = function(){ reject(rq.error); };
+    });
+  }
+  function obTx(modo, fn){
+    return obAbrir().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(OB_STORE, modo), st = tx.objectStore(OB_STORE), req = fn(st);
+        tx.oncomplete = function(){ db.close(); resolve(req ? req.result : undefined); };
+        tx.onerror = tx.onabort = function(){ db.close(); reject(tx.error); };
+      });
+    });
+  }
+  function obAdd(item){ return obTx('readwrite', function(st){ return st.add(item); }); }
+  function obPut(item){ return obTx('readwrite', function(st){ return st.put(item); }); }
+  function obDel(qid){ return obTx('readwrite', function(st){ return st['delete'](qid); }); }
+  function obList(){
+    return obTx('readonly', function(st){ return st.getAll(); }).then(function(l){
+      return (l || []).sort(function(a, b){ return a.qid - b.qid; });
+    });
+  }
+  async function obAtualizarContagem(){
+    try {
+      var l = await obList();
+      var meus = l.filter(function(i){ return !condominioAtual || i.condominioId === condominioAtual.id; });
+      pendentesEnvio = meus.filter(function(i){ return !i.erro; }).length;
+      pendentesComErro = meus.filter(function(i){ return i.erro; }).length;
+    } catch (e) { /* sem IndexedDB: segue sem contagem */ }
+  }
+  // Erro de falta de internet (e não erro de regra/permissão do servidor).
+  function ehErroDeRede(e){
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    var m = String((e && (e.message || e.details || e.name)) || e || '');
+    return /failed to fetch|networkerror|network request failed|load failed|fetch failed|AuthRetryableFetchError|timeout|timed out/i.test(m);
+  }
+  async function enfileirar(item){
+    item.condominioId = condominioAtual.id;
+    item.enfileiradoEm = new Date().toISOString();
+    item.tentativas = 0;
+    await obAdd(item);
+    await obAtualizarContagem();
+    agendarSincronizacao(10000);
+  }
+  function agendarSincronizacao(ms){
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(sincronizarOutbox, ms || 0);
+  }
+  // Campos do banco -> campos locais (pra mostrar na tela o que ainda está na fila)
+  function aplicarCamposLocais(p, c){
+    if ('retirado_em' in c) p.retiradoEm = c.retirado_em;
+    if ('retirado_por' in c) p.retiradoPor = c.retirado_por || '';
+    if ('retirado_documento' in c) p.retiradoDocumento = c.retirado_documento || '';
+    if ('retirado_assinatura' in c) p.retiradoAssinatura = c.retirado_assinatura || null;
+    if ('remetente' in c) p.remetente = c.remetente || '';
+    if ('observacao' in c) p.observacao = c.observacao || '';
+    if ('app_entrega' in c) p.appEntrega = c.app_entrega || null;
+    if ('pendente_identificacao' in c) p.pendenteIdentificacao = !!c.pendente_identificacao;
+    if ('bloco' in c) p.bloco = c.bloco || '';
+    if ('apto' in c) p.apto = c.apto || '';
+    if ('nome_avulso' in c) p.nomeAvulso = c.nome_avulso || '';
+    if ('telefone_avulso' in c) p.telefoneAvulso = c.telefone_avulso || '';
+    if ('resident_id' in c) p.residentId = c.resident_id || null;
+    if ('colaborador_id' in c) p.residentId = c.colaborador_id || null;
+  }
+  // Depois de baixar os dados da nuvem, recoloca por cima o que ainda está na fila
+  async function reaplicarOutboxNosPacotes(){
+    try {
+      var lista = await obList();
+      lista.forEach(function(it){
+        if (!condominioAtual || it.condominioId !== condominioAtual.id || it.erro) return;
+        if (it.tipo === 'nova'){
+          if (!packages.some(function(x){ return x.id === it.row.id; })){
+            var np = encomendaFromRow(it.row);
+            var op = operadorLocal(); np.registradoPorNome = op.nome; np.registradoPorCargo = op.cargo;
+            np.pendenteSync = true; packages.push(np);
+          }
+        } else if (it.tipo === 'retirada'){
+          var opE = operadorLocal();
+          it.ids.forEach(function(id){
+            var px = packages.filter(function(x){ return x.id === id; })[0];
+            if (px && !px.retiradoEm){ aplicarCamposLocais(px, it.campos); px.entreguePorNome = opE.nome; px.entreguePorCargo = opE.cargo; px.pendenteSync = true; }
+          });
+        } else if (it.tipo === 'atualizar'){
+          var pa = packages.filter(function(x){ return x.id === it.id; })[0];
+          if (pa){ aplicarCamposLocais(pa, it.campos); pa.pendenteSync = true; }
+        }
+      });
+    } catch (e) { /* sem fila legível: segue com o que veio da nuvem */ }
+    await obAtualizarContagem();
+  }
+  async function processarItemOutbox(item){
+    if (item.tipo === 'nova'){
+      var row = item.row;
+      if (item.foto && row.foto_path){
+        var up = await malote.storage.from('encomenda-fotos').upload(row.foto_path, dataUrlToBlob(item.foto), { contentType: 'image/jpeg', upsert: true });
+        if (up.error){ if (ehErroDeRede(up.error)) throw up.error; row.foto_path = null; }
+      }
+      var r = await malote.from('encomendas').insert(row);
+      // 23505 = já existe (o envio anterior chegou, só a resposta se perdeu): conta como enviado
+      if (r.error && String(r.error.code) !== '23505') throw r.error;
+      if (item.notificar) malote.functions.invoke('push-notificar-novo', { body: { encomenda_id: row.id } }).catch(function(){});
+      return [row.id];
+    }
+    if (item.tipo === 'retirada'){
+      var r2 = await malote.from('encomendas').update(item.campos).in('id', item.ids);
+      if (r2.error) throw r2.error;
+      return item.ids;
+    }
+    if (item.tipo === 'atualizar'){
+      var r3 = await malote.from('encomendas').update(item.campos).eq('id', item.id);
+      if (r3.error) throw r3.error;
+      if (item.notificar) malote.functions.invoke('push-notificar-novo', { body: { encomenda_id: item.id } }).catch(function(){});
+      return [item.id];
+    }
+    return [];
+  }
+  async function sincronizarOutbox(){
+    if (sincronizandoOutbox || !condominioAtual || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+    sincronizandoOutbox = true;
+    var enviados = 0, ids = {};
+    try {
+      var lista = (await obList()).filter(function(i){ return i.condominioId === condominioAtual.id && !i.erro; });
+      if (lista.length){
+        // força renovar o login se ele venceu enquanto estava sem internet
+        var sess = await malote.auth.getSession();
+        if (sess && sess.data && sess.data.session){
+          for (var i = 0; i < lista.length; i++){
+            var item = lista[i];
+            try {
+              var feitos = await processarItemOutbox(item);
+              await obDel(item.qid);
+              enviados++;
+              feitos.forEach(function(id){ ids[id] = true; });
+            } catch (e) {
+              if (ehErroDeRede(e)) break;
+              item.tentativas = (item.tentativas || 0) + 1;
+              item.erroMsg = malotErroMsg(e);
+              if (item.tentativas >= 3) item.erro = true;
+              await obPut(item);
+            }
+          }
+        }
+      }
+    } catch (e) { /* tenta de novo no próximo ciclo */ }
+    sincronizandoOutbox = false;
+    packages.forEach(function(p){ if (ids[p.id]) p.pendenteSync = false; });
+    await obAtualizarContagem();
+    if (enviados) showToast(enviados + (enviados === 1 ? ' registro guardado foi enviado' : ' registros guardados foram enviados') + ' para a nuvem.');
+    render();
+    if (pendentesEnvio > 0) agendarSincronizacao(30000);
+  }
+  window.addEventListener('offline', function(){ semRede = true; render(); });
+  window.addEventListener('online', async function(){
+    semRede = false;
+    // Se o app abriu sem internet, recarrega os dados da nuvem agora que voltou.
+    if (modoOffline && condominioAtual && !condominioAtual.bloqueado){
+      await carregarDados();
+      ligarRealtime();
+    }
+    agendarSincronizacao(500);
+  });
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && pendentesEnvio > 0) agendarSincronizacao(500); });
+  setInterval(function(){ if (pendentesEnvio > 0) agendarSincronizacao(0); }, 60000);
 
   function showToast(msg){
     var t = document.getElementById('toast');
@@ -835,7 +1015,13 @@
     if (carregandoDados) return renderCarregando();
     if (condominioAtual && condominioAtual.bloqueado) return renderBloqueado();
     if (signingPackageId) return renderAssinatura();
-    var html = modoOffline ? '<div class="notice"><strong>Sem conexão agora — mostrando a última cópia salva neste aparelho; as alterações não vão sincronizar até a internet voltar.</strong></div>' : '';
+    var html = '';
+    if (pendentesComErro) html += '<div class="notice"><strong>' + pendentesComErro + (pendentesComErro === 1 ? ' registro guardado não pôde' : ' registros guardados não puderam') + ' ser enviado' + (pendentesComErro === 1 ? '' : 's') + '. Avise o suporte antes de limpar os dados deste aparelho.</strong></div>';
+    if (semRede || modoOffline){
+      html += '<div class="notice"><strong>Sem internet — você pode continuar registrando e entregando encomendas normalmente. Tudo fica guardado neste aparelho e é enviado sozinho quando a conexão voltar.' + (pendentesEnvio ? ' (' + pendentesEnvio + ' aguardando envio)' : '') + '</strong><br><span class="hint" style="margin:0;">Sem internet não funcionam: ler a etiqueta pela câmera, cadastrar morador, excluir encomenda, abrir o WhatsApp e retirada por código.</span></div>';
+    } else if (pendentesEnvio){
+      html += '<div class="notice"><strong>Enviando ' + pendentesEnvio + (pendentesEnvio === 1 ? ' registro guardado' : ' registros guardados') + ' neste aparelho...</strong></div>';
+    }
     html += renderInstalar();
     html += '<div class="tabs">';
     html += tabBtn('ler','Ler etiqueta');
@@ -1650,6 +1836,7 @@
     var r = p.residentId ? findResident(p.residentId) : null;
     var html = '<div class="hist-item">';
     html += retirado ? '<span class="pill picked">Retirado</span>' : '<span class="pill waiting">Aguardando retirada</span>';
+    if (p.pendenteSync) html += '<span class="pill food" title="Guardado neste aparelho; vai para a nuvem quando a internet voltar">⏳ aguardando envio</span>';
     if (p.appEntrega) html += '<span class="pill food">🍔 ' + esc(p.appEntrega) + '</span>';
     html += '<span><strong>' + esc(r?r.nome:p.nomeAvulso) + '</strong> · ' + localHtml(r?r.bloco:p.bloco, r?r.apto:p.apto) + '</span>';
     var recebidoTxt = rotuloOperador(p.registradoPorNome, p.registradoPorCargo);
@@ -1881,6 +2068,7 @@
       var re = await malote.from('encomendas').select('*').eq('condominio_id', condominioAtual.id);
       if (re.error) throw re.error;
       packages = re.data.map(encomendaFromRow);
+      await reaplicarOutboxNosPacotes();
       if (modoPorteiro && modoEmpresarial()){
         // opções pro <select> de Unidade/Setor no cadastro de colaborador do
         // porteiro — melhor esforço: se falhar, o formulário só fica sem
@@ -1896,6 +2084,7 @@
       // aparelho (se houver) e avisa que os dados podem estar desatualizados.
       loadState();
       modoOffline = true;
+      await obAtualizarContagem();
     }
     carregandoDados = false;
     render(); // render() já guarda uma cópia local (saveState) quando não está carregando
@@ -1952,8 +2141,16 @@
     // Só quem NÃO tem sessão (primeira visita, sem estar logado) vê a
     // apresentação antes — e só entra no login se clicar em "Acessar o
     // sistema" ali.
-    var sessao = await malotExigirSessao('sobre.html');
-    if (!sessao) return; // já redirecionou pra apresentação
+    var sessao = await malotSessao();
+    if (!sessao && navigator.onLine === false){
+      // Sem internet o login não consegue renovar sozinho; usa o que está guardado
+      // no aparelho pra o porteiro poder trabalhar offline.
+      try {
+        var guardada = JSON.parse(localStorage.getItem('sb-nslcuaajnwqggdobryar-auth-token') || 'null');
+        if (guardada && guardada.user && guardada.user.id) sessao = { user: guardada.user };
+      } catch (eSess) { /* sem sessão guardada */ }
+    }
+    if (!sessao){ location.href = 'sobre.html'; return; } // volta pra apresentação
 
     var r = await malote.from('condominios').select('id, nome, qtd_blocos, bloqueado, bloqueado_motivo, tipo_operacao, foto_perfil_path').eq('user_id', sessao.user.id).maybeSingle();
     if (r.error){
@@ -2017,6 +2214,7 @@
 
     await carregarDados();
     ligarRealtime();
+    agendarSincronizacao(1500);
   }
 
   /* ---------- mutations ---------- */
@@ -2122,6 +2320,7 @@
     }
     savingPacote = true;
     try {
+      var enfileirarAgora = (navigator.onLine === false);
       // se a etiqueta foi fotografada (fluxo com câmera/OCR), guarda essa
       // mesma foto anexada à encomenda — dá prova em caso de "não é meu
       // pacote" e já vai junto no aviso pro morador. Se não tinha foto da
@@ -2129,15 +2328,28 @@
       // porteiro tiver escolhido uma. Melhor esforço: se o upload falhar, a
       // encomenda ainda assim é registrada sem a foto.
       var fotoParaAnexar = photoDataUrl || pkgFotoManualDataUrl;
-      if (fotoParaAnexar){
+      var caminhoFoto = fotoParaAnexar ? (condominioAtual.id + '/' + pkg.id + '.jpg') : null;
+      if (fotoParaAnexar && !enfileirarAgora){
         try {
-          var caminhoFoto = condominioAtual.id + '/' + pkg.id + '.jpg';
           var upFoto = await malote.storage.from('encomenda-fotos').upload(caminhoFoto, dataUrlToBlob(fotoParaAnexar), { contentType: 'image/jpeg', upsert: true });
           if (!upFoto.error) pkg.fotoPath = caminhoFoto;
-        } catch (eFoto) { /* segue sem foto */ }
+          else if (ehErroDeRede(upFoto.error)) enfileirarAgora = true;
+        } catch (eFoto) { if (ehErroDeRede(eFoto)) enfileirarAgora = true; /* senão segue sem foto */ }
       }
-      var r = await malote.from('encomendas').insert(rowFromEncomenda(pkg));
-      if (r.error) throw r.error;
+      if (enfileirarAgora && caminhoFoto) pkg.fotoPath = caminhoFoto; // a foto sobe no envio
+      if (!enfileirarAgora){
+        try {
+          var r = await malote.from('encomendas').insert(rowFromEncomenda(pkg));
+          if (r.error) throw r.error;
+        } catch (eIns) {
+          if (ehErroDeRede(eIns)) enfileirarAgora = true; else throw eIns;
+        }
+      }
+      if (enfileirarAgora){
+        await enfileirar({ tipo: 'nova', row: rowFromEncomenda(pkg), foto: fotoParaAnexar || null, notificar: !!pkg.residentId });
+        pkg.pendenteSync = true;
+        showToast('Sem internet: encomenda guardada neste aparelho. Ela é enviada sozinha quando a conexão voltar.');
+      }
       // mesma proteção contra corrida com o eco em tempo real da própria inserção.
       var opReg = operadorLocal(); pkg.registradoPorNome = opReg.nome; pkg.registradoPorCargo = opReg.cargo;
       if (!packages.some(function(x){ return x.id === pkg.id; })) packages.push(pkg);
@@ -2197,8 +2409,19 @@
         residentId: null, bloco: '', apto: '', nomeAvulso: '', telefoneAvulso: '',
         origemBipagem: true, pendenteIdentificacao: true
       };
-      var r = await malote.from('encomendas').insert(rowFromEncomenda(pkg));
-      if (r.error) throw r.error;
+      var bipFila = (navigator.onLine === false);
+      if (!bipFila){
+        try {
+          var r = await malote.from('encomendas').insert(rowFromEncomenda(pkg));
+          if (r.error) throw r.error;
+        } catch (eBip) {
+          if (ehErroDeRede(eBip)) bipFila = true; else throw eBip;
+        }
+      }
+      if (bipFila){
+        await enfileirar({ tipo: 'nova', row: rowFromEncomenda(pkg), foto: null, notificar: false });
+        pkg.pendenteSync = true;
+      }
       var opReg = operadorLocal(); pkg.registradoPorNome = opReg.nome; pkg.registradoPorCargo = opReg.cargo;
       if (!packages.some(function(x){ return x.id === pkg.id; })) packages.push(pkg);
       bipagemUltimas.unshift({ codigo: pkg.codigo, hora: fmtWhen(pkg.criadoEm) });
@@ -2276,8 +2499,18 @@
 
     identBusy = true; render();
     try {
-      var r = await malote.from('encomendas').update(upd).eq('id', id);
-      if (r.error) throw r.error;
+      var identFila = false;
+      try {
+        if (navigator.onLine === false) throw new Error('offline');
+        var r = await malote.from('encomendas').update(upd).eq('id', id);
+        if (r.error) throw r.error;
+      } catch (eUpd) {
+        if (ehErroDeRede(eUpd)) identFila = true; else throw eUpd;
+      }
+      if (identFila){
+        await enfileirar({ tipo: 'atualizar', id: id, campos: upd, notificar: !!residentIdEscolhido });
+        showToast('Sem internet: identificação guardada neste aparelho. Envio automático quando a conexão voltar.');
+      }
       for (var i=0;i<packages.length;i++){
         if (packages[i].id !== id) continue;
         var p = packages[i];
@@ -2285,10 +2518,11 @@
         p.nomeAvulso = upd.nome_avulso || ''; p.telefoneAvulso = upd.telefone_avulso || '';
         p.remetente = upd.remetente; p.observacao = upd.observacao; p.appEntrega = upd.app_entrega;
         p.pendenteIdentificacao = false;
+        if (identFila) p.pendenteSync = true;
         break;
       }
       lastRegisteredId = id;
-      if (residentIdEscolhido){
+      if (residentIdEscolhido && !identFila){
         malote.functions.invoke('push-notificar-novo', { body: { encomenda_id: id } }).catch(function(){});
       }
       identificandoId = null; identChosenResidentId = ''; identManualMode = false; identFormDraft = null;
@@ -2411,6 +2645,7 @@
       var excId = btn.getAttribute('data-id');
       var excPkg = packages.filter(function(x){ return x.id === excId; })[0];
       if (!excPkg || excPkg.retiradoEm) return;
+      if (navigator.onLine === false || excPkg.pendenteSync){ showToast(excPkg.pendenteSync ? 'Essa encomenda ainda não foi enviada para a nuvem. Tente de novo quando a internet voltar.' : 'Sem internet: não dá para excluir agora.'); return; }
       var excRes = excPkg.residentId ? findResident(excPkg.residentId) : null;
       var excNome = excRes ? excRes.nome : (excPkg.nomeAvulso || 'sem nome');
       if (!window.confirm('Excluir a encomenda ' + (excPkg.codigo || '') + ' de ' + excNome + '?\n\nEla some da lista e do histórico e não dá para desfazer. Depois você pode registrar de novo.')) return;
@@ -2471,10 +2706,17 @@
       if (!pacotesLote.some(function(x){ return x.id === idAlvo; })) pacotesLote.push(pkgAlvo);
       savingRetirada = true;
       try {
-        var r = await malote.from('encomendas').update({
-          retirado_em: retiradoEmIso, retirado_por: nomeRecebeu, retirado_documento: documentoRet || null, retirado_assinatura: assinaturaPng
-        }).in('id', pacotesLote.map(function(x){ return x.id; }));
-        if (r.error) throw r.error;
+        var camposRet = { retirado_em: retiradoEmIso, retirado_por: nomeRecebeu, retirado_documento: documentoRet || null, retirado_assinatura: assinaturaPng };
+        var idsRet = pacotesLote.map(function(x){ return x.id; });
+        var retFila = false;
+        try {
+          if (navigator.onLine === false) throw new Error('offline');
+          var r = await malote.from('encomendas').update(camposRet).in('id', idsRet);
+          if (r.error) throw r.error;
+        } catch (eRet) {
+          if (ehErroDeRede(eRet)) retFila = true; else throw eRet;
+        }
+        if (retFila) await enfileirar({ tipo: 'retirada', ids: idsRet, campos: camposRet });
         var opEnt = operadorLocal();
         pacotesLote.forEach(function(px){
           px.retiradoEm = retiradoEmIso;
@@ -2482,9 +2724,10 @@
           px.retiradoDocumento = documentoRet;
           px.retiradoAssinatura = assinaturaPng;
           px.entreguePorNome = opEnt.nome; px.entreguePorCargo = opEnt.cargo;
+          if (retFila) px.pendenteSync = true;
         });
         signingPackageId = null;
-        showToast(pacotesLote.length > 1 ? 'Retirada registrada para ' + pacotesLote.length + ' encomendas!' : 'Retirada registrada!');
+        showToast((retFila ? 'Sem internet: ' : '') + (pacotesLote.length > 1 ? 'retirada registrada para ' + pacotesLote.length + ' encomendas' : 'retirada registrada') + (retFila ? ' e guardada neste aparelho. Envio automático quando a conexão voltar.' : '!'));
       } catch (err) {
         showToast('Não consegui registrar a retirada. ' + malotErroMsg(err));
       } finally {
