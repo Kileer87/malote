@@ -223,6 +223,13 @@
   .hist-item .hwhen{ margin-left:auto; color:var(--ink-muted); font-size:12px; }
   .hist-item .hist-meta{ margin-left:auto; display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
   .hist-item .hist-meta .hwhen{ margin-left:0; }
+  .loc-card{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:12px; margin-top:10px; }
+  .loc-foto{ width:104px; height:104px; flex-shrink:0; border-radius:8px; border:1px solid var(--border); background:var(--bg,#f3f4f6); object-fit:cover; cursor:zoom-in; display:flex; align-items:center; justify-content:center; text-align:center; font-size:11px; color:var(--ink-muted); padding:4px; }
+  .loc-foto.ampliada{ width:100%; height:auto; max-height:70vh; object-fit:contain; cursor:zoom-out; flex-basis:100%; }
+  .loc-info{ flex:1; min-width:180px; }
+  .loc-info .nome{ font-size:15px; font-weight:700; }
+  .loc-info .meta{ font-size:12.5px; color:var(--ink-muted); margin-top:3px; }
+  .loc-acoes{ flex-basis:100%; display:flex; gap:8px; margin-top:4px; }
   .hist-item .hist-acoes{ flex-basis:100%; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .pill{ display:inline-flex; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; }
   .pill.notified{ background:var(--status-notified-bg); color:var(--status-notified); }
@@ -934,6 +941,10 @@
     // <input> do zero (innerHTML inteiro) — sem isso o campo perde o foco a
     // cada bipada e o leitor Bluetooth (que só "digita" enquanto o campo
     // está focado) para de funcionar depois da primeira etiqueta.
+    if (tab === 'localizar' && !signingPackageId){
+      if (localizarFocar){ var campoLoc = document.getElementById('f-localizar'); if (campoLoc){ campoLoc.focus(); try{ campoLoc.setSelectionRange(campoLoc.value.length, campoLoc.value.length); }catch(_){} } localizarFocar = false; }
+      carregarFotosLocalizar();
+    }
     if (modoBipagem){
       var campoBip = document.getElementById('f-bipagem');
       if (campoBip) campoBip.focus();
@@ -1028,6 +1039,7 @@
     html += renderInstalar();
     html += '<div class="tabs">';
     html += tabBtn('ler','Ler etiqueta');
+    html += tabBtn('localizar','Localizar encomenda');
     // Porteiro/recepção também vê essa aba — mas com uma versão restrita
     // (só cadastrar, sem editar/excluir e sem as configurações do
     // condomínio/empresa); ver renderMoradores().
@@ -1035,6 +1047,7 @@
     html += tabBtn('historico', modoPorteiro ? 'Quem retirou' : 'Histórico / Backup');
     html += '</div>';
     if (tab === 'ler') html += renderLer();
+    else if (tab === 'localizar') html += renderLocalizar();
     else if (tab === 'moradores') html += renderMoradores();
     else html += renderHistorico();
     return html;
@@ -1930,6 +1943,74 @@
     return html;
   }
 
+
+  /* ---------- localizar encomenda (retirada: digita o apartamento, o sistema mostra a encomenda e a foto) ---------- */
+  var localizarQuery = '';
+  var localizarFocar = false;
+  var fotoUrlCache = {};
+  function pendentesDaBusca(q){
+    var tokens = semAcento(q).toUpperCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    var pend = packages.filter(function(p){ return !p.retiradoEm; });
+    var achados = pend.filter(function(p){
+      var r = p.residentId ? findResident(p.residentId) : null;
+      var apto = normKey(semAcento(r ? r.apto : p.apto));
+      var bloco = normKey(semAcento(r ? r.bloco : p.bloco));
+      var nomes = semAcento(r ? r.nome : (p.nomeAvulso || '')).toUpperCase().split(/\s+/).filter(Boolean);
+      return tokens.every(function(t){
+        if (apto === t || (bloco && bloco === t)) return true;
+        return nomes.some(function(w){ return w.indexOf(t) === 0; });
+      });
+    });
+    return achados.sort(function(a,b){ return new Date(b.criadoEm) - new Date(a.criadoEm); });
+  }
+  function htmlResultadosLocalizar(q){
+    if (!String(q||'').trim()) return '<div class="hint" style="margin-top:12px;">Digite o número do apartamento (ou o nome do morador). Aparecem todas as encomendas que ainda não foram retiradas, com a foto tirada na chegada.</div>';
+    var achados = pendentesDaBusca(q);
+    if (!achados.length) return '<div class="empty" style="margin-top:12px;"><b>Nenhuma encomenda aguardando</b>Não há encomenda pendente para essa busca. Confira o número ou o nome; se o morador diz que chegou algo, veja também a aba "' + (modoPorteiro ? 'Quem retirou' : 'Histórico / Backup') + '".</div>';
+    var html = '<div class="hint" style="margin-top:12px;"><strong style="color:var(--ink);">' + achados.length + (achados.length === 1 ? ' encomenda aguardando' : ' encomendas aguardando') + '</strong>' + (achados.length > 1 ? ' — ao registrar a retirada, dá para marcar todas e assinar uma vez só.' : '') + '</div>';
+    achados.forEach(function(p){
+      var r = p.residentId ? findResident(p.residentId) : null;
+      var nome = r ? r.nome : (p.nomeAvulso || 'Sem identificação');
+      var recebidoTxt = rotuloOperador(p.registradoPorNome, p.registradoPorCargo);
+      html += '<div class="loc-card">';
+      if (p.fotoPath) html += '<img class="loc-foto" alt="Foto da encomenda" data-foto-path="' + esc(p.fotoPath) + '" data-action="ampliar-foto">';
+      else html += '<div class="loc-foto" style="cursor:default;">sem foto</div>';
+      html += '<div class="loc-info"><div class="nome">' + esc(nome) + '</div>';
+      html += '<div class="meta">' + localHtml(r ? r.bloco : p.bloco, r ? r.apto : p.apto) + '</div>';
+      html += '<div class="meta">Chegou ' + esc(fmtWhen(p.criadoEm)) + (recebidoTxt ? ' · recebida por ' + esc(recebidoTxt) : '') + '</div>';
+      if (p.remetente) html += '<div class="meta">Remetente: ' + esc(p.remetente) + '</div>';
+      if (p.observacao) html += '<div class="meta">Obs.: ' + esc(p.observacao) + '</div>';
+      if (p.pendenteSync) html += '<div class="meta">⏳ aguardando envio (guardada neste aparelho)</div>';
+      html += '</div>';
+      html += '<div class="loc-acoes"><button type="button" class="btn btn-primary" data-action="abrir-retirada" data-id="' + p.id + '">Registrar retirada</button></div>';
+      html += '</div>';
+    });
+    return html;
+  }
+  async function carregarFotosLocalizar(){
+    var imgs = document.querySelectorAll('img[data-foto-path]');
+    for (var i = 0; i < imgs.length; i++){
+      (function(img){
+        var path = img.getAttribute('data-foto-path');
+        var pronto = function(url){ if (url){ img.src = url; } else { img.removeAttribute('src'); img.alt = 'Foto indisponível agora'; } };
+        if (fotoUrlCache[path]) return pronto(fotoUrlCache[path]);
+        malote.storage.from('encomenda-fotos').createSignedUrl(path, 3600).then(function(res){
+          if (res && !res.error && res.data){ fotoUrlCache[path] = res.data.signedUrl; pronto(res.data.signedUrl); }
+          else pronto(null);
+        }).catch(function(){ pronto(null); });
+      })(imgs[i]);
+    }
+  }
+  function renderLocalizar(){
+    var html = '<div class="card"><h2>Localizar encomenda</h2>';
+    html += '<div class="field full"><label>Apartamento (ou nome do morador)</label>';
+    html += '<input type="text" id="f-localizar" value="' + esc(localizarQuery) + '" placeholder="Ex: 1202" autocomplete="off" enterkeyhint="search"></div>';
+    html += '<div id="localizar-resultados">' + htmlResultadosLocalizar(localizarQuery) + '</div>';
+    html += '</div>';
+    return html;
+  }
+
   function renderHistorico(){
     if (!packages.length){
       var vazio = '<div class="card"><h2>Histórico desta versão</h2>';
@@ -2542,6 +2623,12 @@
 
   /* ---------- events ---------- */
   document.addEventListener('input', function(e){
+    if (e.target && e.target.id === 'f-localizar'){
+      localizarQuery = e.target.value;
+      var caixa = document.getElementById('localizar-resultados');
+      if (caixa){ caixa.innerHTML = htmlResultadosLocalizar(localizarQuery); carregarFotosLocalizar(); }
+      return;
+    }
     var campo = e.target.closest ? e.target.closest('[data-busca-morador]') : null;
     if (!campo) return;
     var modo = campo.getAttribute('data-busca-morador');
@@ -2576,7 +2663,8 @@
       return;
     }
 
-    if (action === 'tab'){ tab = btn.getAttribute('data-tab'); render(); return; }
+    if (action === 'tab'){ tab = btn.getAttribute('data-tab'); localizarFocar = (tab === 'localizar'); render(); return; }
+    if (action === 'ampliar-foto'){ btn.classList.toggle('ampliada'); return; }
     if (action === 'chip-remetente'){ var inp = document.getElementById('f-remetente'); if (inp) inp.value = btn.getAttribute('data-val'); return; }
     if (action === 'run-ocr'){ if (photoDataUrl) runOcr(photoDataUrl); return; }
     if (action === 'retake-photo'){ resetScan(); render(); return; }
