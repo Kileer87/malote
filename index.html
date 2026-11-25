@@ -223,6 +223,11 @@
   .hist-item .hwhen{ margin-left:auto; color:var(--ink-muted); font-size:12px; }
   .hist-item .hist-meta{ margin-left:auto; display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
   .hist-item .hist-meta .hwhen{ margin-left:0; }
+  .loc-aptos{ margin-top:10px; }
+  .loc-aptos .chips{ max-height:230px; overflow-y:auto; gap:8px; padding:2px; }
+  .loc-aptos .chip{ min-width:58px; padding:9px 12px; font-size:14px; font-weight:600; color:var(--ink); text-align:center; }
+  .loc-aptos .chip.pend{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .loc-aptos .chip small{ display:block; font-size:10px; font-weight:500; opacity:.9; }
   .loc-card{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:12px; margin-top:10px; }
   .loc-foto{ width:104px; height:104px; flex-shrink:0; border-radius:8px; border:1px solid var(--border); background:var(--bg,#f3f4f6); object-fit:cover; cursor:zoom-in; display:flex; align-items:center; justify-content:center; text-align:center; font-size:11px; color:var(--ink-muted); padding:4px; }
   .loc-foto.ampliada{ width:100%; height:auto; max-height:70vh; object-fit:contain; cursor:zoom-out; flex-basis:100%; }
@@ -1964,8 +1969,45 @@
     });
     return achados.sort(function(a,b){ return new Date(b.criadoEm) - new Date(a.criadoEm); });
   }
+  var localizarAberto = false;
+  function textoQueryApto(bloco, apto){ return (bloco ? bloco + ' ' : '') + apto; }
+  function htmlListaAptos(q){
+    if (!localizarAberto) return '';
+    var tokens = semAcento(q).toUpperCase().split(/\s+/).filter(Boolean);
+    var contagem = {};
+    packages.forEach(function(p){
+      if (p.retiradoEm) return;
+      var r = p.residentId ? findResident(p.residentId) : null;
+      var k = normKey(r ? r.bloco : p.bloco) + '|' + normKey(r ? r.apto : p.apto);
+      contagem[k] = (contagem[k] || 0) + 1;
+    });
+    var vistos = {}, itens = [];
+    sortedResidents().forEach(function(r){
+      var k = normKey(r.bloco) + '|' + normKey(r.apto);
+      if (vistos[k] || !String(r.apto || '').trim()) return;
+      vistos[k] = true;
+      if (tokens.length && !tokens.every(function(t){ return normKey(semAcento(r.apto)).indexOf(t) === 0 || (r.bloco && normKey(semAcento(r.bloco)).indexOf(t) === 0); })) return;
+      itens.push({ r: r, n: contagem[k] || 0 });
+    });
+    var rotulo = modoEmpresarial() ? 'setores' : 'apartamentos';
+    var html = '<div class="loc-aptos"><div class="hint" style="margin:0;">Toque no ' + (modoEmpresarial() ? 'setor' : 'apartamento') + '. Os destacados têm encomenda aguardando.' +
+      ' <button type="button" class="btn btn-outline btn-sm" style="margin-left:6px;" data-action="localizar-fechar">Fechar lista</button></div>';
+    if (!itens.length) return html + '<div class="hint">Nenhum ' + (modoEmpresarial() ? 'setor' : 'apartamento') + ' encontrado.</div></div>';
+    html += '<div class="chips">';
+    itens.forEach(function(it){
+      var r = it.r;
+      html += '<button type="button" class="chip' + (it.n ? ' pend' : '') + '" data-action="localizar-apto" data-bloco="' + esc(r.bloco || '') + '" data-apto="' + esc(r.apto) + '">' +
+        (r.bloco ? '<small>Bl. ' + esc(r.bloco) + '</small>' : '') + esc(r.apto) + (it.n ? '<small>' + it.n + (it.n === 1 ? ' encomenda' : ' encomendas') + '</small>' : '') + '</button>';
+    });
+    return html + '</div></div>';
+  }
+  function atualizarLocalizar(){
+    var l = document.getElementById('localizar-aptos'), c = document.getElementById('localizar-resultados');
+    if (l) l.innerHTML = htmlListaAptos(localizarQuery);
+    if (c){ c.innerHTML = htmlResultadosLocalizar(localizarQuery); carregarFotosLocalizar(); }
+  }
   function htmlResultadosLocalizar(q){
-    if (!String(q||'').trim()) return '<div class="hint" style="margin-top:12px;">Digite o número do apartamento (ou o nome do morador). Aparecem todas as encomendas que ainda não foram retiradas, com a foto tirada na chegada.</div>';
+    if (!String(q||'').trim()) return localizarAberto ? '' : '<div class="hint" style="margin-top:12px;">Digite o número do apartamento (ou o nome do morador). Aparecem todas as encomendas que ainda não foram retiradas, com a foto tirada na chegada.</div>';
     var achados = pendentesDaBusca(q);
     if (!achados.length) return '<div class="empty" style="margin-top:12px;"><b>Nenhuma encomenda aguardando</b>Não há encomenda pendente para essa busca. Confira o número ou o nome; se o morador diz que chegou algo, veja também a aba "' + (modoPorteiro ? 'Quem retirou' : 'Histórico / Backup') + '".</div>';
     var html = '<div class="hint" style="margin-top:12px;"><strong style="color:var(--ink);">' + achados.length + (achados.length === 1 ? ' encomenda aguardando' : ' encomendas aguardando') + '</strong>' + (achados.length > 1 ? ' — ao registrar a retirada, dá para marcar todas e assinar uma vez só.' : '') + '</div>';
@@ -1993,7 +2035,7 @@
     for (var i = 0; i < imgs.length; i++){
       (function(img){
         var path = img.getAttribute('data-foto-path');
-        var pronto = function(url){ if (url){ img.src = url; } else { img.removeAttribute('src'); img.alt = 'Foto indisponível agora'; } };
+        var pronto = function(url){ if (url){ img.src = url; } else { var aviso = document.createElement('div'); aviso.className = 'loc-foto'; aviso.style.cursor = 'default'; aviso.textContent = 'foto indisponível agora'; if (img.parentNode) img.parentNode.replaceChild(aviso, img); } };
         if (fotoUrlCache[path]) return pronto(fotoUrlCache[path]);
         malote.storage.from('encomenda-fotos').createSignedUrl(path, 3600).then(function(res){
           if (res && !res.error && res.data){ fotoUrlCache[path] = res.data.signedUrl; pronto(res.data.signedUrl); }
@@ -2006,7 +2048,8 @@
     var html = '<div class="card"><h2>Localizar encomenda</h2>';
     html += '<div class="field full"><label>Apartamento (ou nome do morador)</label>';
     html += '<input type="text" id="f-localizar" value="' + esc(localizarQuery) + '" placeholder="Ex: 1202" autocomplete="off" enterkeyhint="search"></div>';
-    html += '<div id="localizar-resultados">' + htmlResultadosLocalizar(localizarQuery) + '</div>';
+    html += '<div id="localizar-aptos">' + htmlListaAptos(localizarQuery) + '</div>';
+        html += '<div id="localizar-resultados">' + htmlResultadosLocalizar(localizarQuery) + '</div>';
     html += '</div>';
     return html;
   }
@@ -2625,8 +2668,8 @@
   document.addEventListener('input', function(e){
     if (e.target && e.target.id === 'f-localizar'){
       localizarQuery = e.target.value;
-      var caixa = document.getElementById('localizar-resultados');
-      if (caixa){ caixa.innerHTML = htmlResultadosLocalizar(localizarQuery); carregarFotosLocalizar(); }
+      localizarAberto = true;
+      atualizarLocalizar();
       return;
     }
     var campo = e.target.closest ? e.target.closest('[data-busca-morador]') : null;
@@ -2643,6 +2686,13 @@
     alvo.innerHTML = achados.map(function(r){
       return '<button type="button" class="chip" style="text-align:left;" data-action="' + acaoEscolher(modo) + '" data-id="' + esc(r.id) + '">' + esc(r.nome) + ' · ' + esc(rotuloLocalResidente(r)) + '</button>';
     }).join('');
+  });
+  document.addEventListener('focusin', function(e){
+    if (e.target && e.target.id === 'f-localizar' && !localizarAberto){ localizarAberto = true; atualizarLocalizar(); }
+  });
+  // clicar de novo no campo (já com foco) também abre a lista
+  document.addEventListener('click', function(e){
+    if (e.target && e.target.id === 'f-localizar' && !localizarAberto){ localizarAberto = true; atualizarLocalizar(); }
   });
   document.addEventListener('click', async function(e){
     var btn = e.target.closest('[data-action]');
@@ -2664,6 +2714,14 @@
     }
 
     if (action === 'tab'){ tab = btn.getAttribute('data-tab'); localizarFocar = (tab === 'localizar'); render(); return; }
+    if (action === 'localizar-apto'){
+      localizarQuery = textoQueryApto(btn.getAttribute('data-bloco'), btn.getAttribute('data-apto'));
+      localizarAberto = false;
+      var cl = document.getElementById('f-localizar'); if (cl) cl.value = localizarQuery;
+      atualizarLocalizar();
+      return;
+    }
+    if (action === 'localizar-fechar'){ localizarAberto = false; atualizarLocalizar(); return; }
     if (action === 'ampliar-foto'){ btn.classList.toggle('ampliada'); return; }
     if (action === 'chip-remetente'){ var inp = document.getElementById('f-remetente'); if (inp) inp.value = btn.getAttribute('data-val'); return; }
     if (action === 'run-ocr'){ if (photoDataUrl) runOcr(photoDataUrl); return; }
@@ -2762,7 +2820,7 @@
       render();
       return;
     }
-    if (action === 'abrir-retirada'){ signingPackageId = btn.getAttribute('data-id'); render(); return; }
+    if (action === 'abrir-retirada'){ localizarAberto = false; signingPackageId = btn.getAttribute('data-id'); render(); return; }
     if (action === 'cancelar-assinatura'){ signingPackageId = null; render(); return; }
     if (action === 'ver-assinatura'){
       var vid = btn.getAttribute('data-id');

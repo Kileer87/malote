@@ -1,4 +1,4 @@
-const CACHE = 'malote-leitor-v28';
+const CACHE = 'malote-leitor-v29';
 const ASSETS = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './parceiros/assets/supabase-client.js', './parceiros/assets/supabase-js-2.119.2.js'];
 // Bibliotecas externas que o app precisa pra abrir SEM internet (versões fixas na URL,
 // então é seguro guardar). Se algum falhar na instalação, o resto continua.
